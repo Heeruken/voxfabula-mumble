@@ -160,6 +160,38 @@ class TestMumbleConfig(unittest.TestCase):
                     os.environ["APPDATA"] = old
 
 
+class TestMumbleConfigRepair(unittest.TestCase):
+    def test_every_plugin_entry_is_complete(self):
+        """Crash reale del 25/09: una voce di plugin senza 'positional_data_enabled'
+        fa lanciare a Mumble un'eccezione JSON all'avvio. Simula il PC reale: copia
+        vecchia di vc_range in %APPDATA%\\Mumble e una config gia' rotta su disco."""
+        with tempfile.TemporaryDirectory() as tmp:
+            old = os.environ.get("APPDATA")
+            os.environ["APPDATA"] = tmp
+            try:
+                from nwn_voce import mumble_config, paths
+                os.makedirs(os.path.join(tmp, "Mumble", "Mumble", "Plugins"))
+                open(os.path.join(tmp, "Mumble", "Mumble", "Plugins", "vc_range.dll"), "wb").close()
+                broken = "C:/Users/x/AppData/Roaming/Mumble/Mumble/Plugins/vc_range.dll"
+                _write(paths.mumble_settings_file(),
+                       {"plugins": {mumble_config.plugin_key(broken): {"path": broken, "enabled": False},
+                                    "rotto": "non-un-oggetto"}})
+                mdir = os.path.join(tmp, "mumble")
+                os.makedirs(os.path.join(mdir, "plugins"))
+                d = _read(mumble_config.write_config(mdir))
+                for key, entry in d["plugins"].items():
+                    for field in ("enabled", "positional_data_enabled",
+                                  "keyboard_monitoring_allowed", "path"):
+                        self.assertIn(field, entry, f"plugin {key}: manca {field}")
+                self.assertNotIn("rotto", d["plugins"])
+                self.assertFalse(d["plugins"][mumble_config.plugin_key(broken)]["enabled"])
+            finally:
+                if old is None:
+                    os.environ.pop("APPDATA", None)
+                else:
+                    os.environ["APPDATA"] = old
+
+
 class TestApiSurface(unittest.TestCase):
     def test_only_methods_are_public(self):
         """pywebview esplora ricorsivamente gli attributi PUBBLICI dell'Api: se ci

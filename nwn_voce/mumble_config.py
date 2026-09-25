@@ -34,10 +34,6 @@ def plugin_key(dll_path: str) -> str:
     return hashlib.sha1(_fwd(dll_path).encode("utf-8")).hexdigest()
 
 
-def _user_plugin_dir() -> str:
-    base = os.environ.get("APPDATA", os.path.expanduser("~"))
-    return os.path.join(base, "Mumble", "Mumble", "Plugins")
-
 
 def _load(path: str) -> dict:
     try:
@@ -72,23 +68,24 @@ def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
     vc.setdefault("positional_data_enabled", False)
     vc.setdefault("keyboard_monitoring_allowed", False)
 
-    # Una vecchia versione dell'app copiava vc_range.dll anche nella cartella
-    # plugin dell'utente: Mumble la caricherebbe DUE volte (voce attenuata due
-    # volte). Teniamo accese solo le nostre copie.
+    # Teniamo accese solo le NOSTRE copie di vc_range/link. (Con -c Mumble cerca i
+    # plugin utente accanto al file di configurazione, non in %APPDATA%\Mumble:
+    # eventuali copie vecchie li' non vengono nemmeno lette.)
     keep = {plugin_key(link_p), plugin_key(vc_p)}
-    extra = []
-    udir = _user_plugin_dir()
-    for fn in ("vc_range.dll", "link.dll"):
-        p = os.path.join(udir, fn)
-        if os.path.exists(p):
-            extra.append(_fwd(p))
-    for p in extra:
-        entry = plugins.setdefault(plugin_key(p), {"path": p})
-        entry["enabled"] = False
-    for pkey, entry in plugins.items():
-        if pkey in keep or not isinstance(entry, dict):
+    for pkey, entry in list(plugins.items()):
+        if not isinstance(entry, dict):
+            del plugins[pkey]
             continue
-        ep = str(entry.get("path", "")).replace("\\", "/").lower()
+        # OGNI voce deve avere TUTTI i campi: Mumble li legge con .at() e, se ne
+        # manca uno, lancia un'eccezione e si pianta all'avvio (crash reale del
+        # 25/09: una voce senza 'positional_data_enabled').
+        entry.setdefault("enabled", False)
+        entry.setdefault("positional_data_enabled", False)
+        entry.setdefault("keyboard_monitoring_allowed", False)
+        entry.setdefault("path", "")
+        if pkey in keep:
+            continue
+        ep = str(entry["path"]).replace("\\", "/").lower()
         if ep.endswith("/vc_range.dll") or ep.endswith("/link.dll"):
             entry["enabled"] = False
 
