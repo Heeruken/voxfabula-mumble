@@ -113,15 +113,19 @@ def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
     misc["database_location"] = _fwd(db)
     misc["audio_wizard_has_been_shown"] = True
     misc["viewed_server_ping_consent_message"] = True
-    misc["check_for_updates"] = False          # nessuna chiamata a casa di Mumble
-    misc["check_for_plugin_updates"] = False
-    misc["auto_update_plugins"] = False
+    for k in ("check_for_updates", "check_for_plugin_updates", "auto_update_plugins"):
+        misc.pop(k, None)                      # stavano qui per errore: Mumble le ignorava
+    data.pop("overlay", None)                  # sezione che non esiste: Mumble la ignorava
+
+    # Niente "New version available" di Mumble: gli aggiornamenti li gestisce l'app.
+    # La sezione giusta e' "update" (verificato: Mumble la rilegge e la risalva).
+    update = data.setdefault("update", {})
+    update["check_for_updates"] = False
+    update["check_for_plugin_updates"] = False
+    update["auto_update_plugins"] = False
 
     ui = data.setdefault("ui", {})
     ui["quit_behavior"] = "AlwaysQuit"         # alla chiusura esce e salva, senza domande
-
-    # Overlay nei giochi: non lo usiamo e i suoi eseguibili non sono nel pacchetto.
-    data.setdefault("overlay", {})["enable_overlay"] = False
 
     data["mumble_has_quit_normally"] = True    # niente avvisi "chiusura anomala"
     data.setdefault("settings_version", 1)
@@ -132,3 +136,45 @@ def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
     os.replace(tmp, path)
     log.info("configurazione Mumble scritta: %s", path)
     return path
+
+
+# ---------------------------------------------------------------------------
+# Certificato del server Mumble di VoxFabula.
+#
+# Il server usa un certificato auto-firmato: al primo collegamento Mumble
+# chiederebbe "Vuoi comunque accettare questo certificato?". Mumble ricorda i
+# certificati accettati nella tabella `cert` del suo database (host, porta,
+# impronta SHA-1 in esadecimale minuscolo): la pre-riempiamo con l'impronta del
+# NOSTRO server, cosi' la domanda non compare. Solo questa impronta: se un giorno
+# il server presentasse un certificato diverso, Mumble lo segnalerebbe comunque.
+#
+# Se il certificato del server cambia (per esempio perche' il container di Mumble
+# viene ricreato senza i suoi dati), aggiornare questa impronta e pubblicare una
+# nuova versione. Impronta attuale: quella che Mumble mostra nella finestra
+# "Digest certificato server (SHA-1)", senza i due punti.
+# ---------------------------------------------------------------------------
+SERVER_CERT_SHA1 = "64d902a09386aa3b7c013961ad7a747beed0fde5"
+
+_CERT_TABLE = ("CREATE TABLE IF NOT EXISTS `cert` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, "
+               "`hostname` TEXT, `port` INTEGER, `digest` TEXT)")   # schema identico a Mumble 1.5
+
+
+def seed_server_cert(host: str, port: int = 64738, digest: str = SERVER_CERT_SHA1) -> bool:
+    """Fa riconoscere a Mumble il certificato del nostro server per ``host:port``.
+    Non tocca una scelta gia' presente per lo stesso host (anche se diversa).
+    True se ha aggiunto la voce."""
+    import sqlite3
+    db = paths.mumble_database_file()
+    if not os.path.exists(db):
+        open(db, "ab").close()
+    con = sqlite3.connect(db, timeout=5)
+    try:
+        con.execute(_CERT_TABLE)
+        if con.execute("SELECT 1 FROM cert WHERE hostname=? AND port=?", (host, port)).fetchone():
+            return False
+        con.execute("INSERT INTO cert (hostname, port, digest) VALUES (?,?,?)", (host, port, digest))
+        con.commit()
+        log.info("certificato del server pre-accettato per %s:%s", host, port)
+        return True
+    finally:
+        con.close()

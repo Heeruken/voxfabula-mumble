@@ -141,7 +141,9 @@ class TestMumbleConfig(unittest.TestCase):
                 self.assertTrue(d["misc"]["database_location"].startswith(tmp.replace("\\", "/")))
                 self.assertTrue(os.path.exists(paths.mumble_database_file()),
                                 "il database deve esistere, o Mumble si blocca su 'File not found'")
-                self.assertFalse(d["misc"]["check_for_updates"])
+                self.assertFalse(d["update"]["check_for_updates"])      # sezione verificata dal vivo
+                self.assertNotIn("check_for_updates", d["misc"])
+                self.assertNotIn("overlay", d)
                 vc = os.path.join(mdir, "plugins", "vc_range.dll")
                 self.assertTrue(d["plugins"][mumble_config.plugin_key(vc)]["enabled"])
                 self.assertEqual(d["audio_backend"]["wasapi_input"], "{0.0.1.00000000}.{x}")
@@ -190,6 +192,59 @@ class TestMumbleConfigRepair(unittest.TestCase):
                     os.environ.pop("APPDATA", None)
                 else:
                     os.environ["APPDATA"] = old
+
+
+class TempAppData(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old = os.environ.get("APPDATA")
+        os.environ["APPDATA"] = self._tmp.name
+
+    def tearDown(self):
+        if self._old is None:
+            os.environ.pop("APPDATA", None)
+        else:
+            os.environ["APPDATA"] = self._old
+        self._tmp.cleanup()
+
+
+class TestServerCertificate(TempAppData):
+    def rows(self):
+        import sqlite3
+        from nwn_voce import paths
+        c = sqlite3.connect(paths.mumble_database_file())
+        try:
+            return c.execute("SELECT hostname, port, digest FROM cert").fetchall()
+        finally:
+            c.close()
+
+    def test_seeded_once_on_empty_database(self):
+        from nwn_voce import mumble_config
+        self.assertTrue(mumble_config.seed_server_cert("play.esempio.it"))
+        self.assertFalse(mumble_config.seed_server_cert("play.esempio.it"))   # niente doppioni
+        self.assertEqual(self.rows(), [("play.esempio.it", 64738, mumble_config.SERVER_CERT_SHA1)])
+
+    def test_existing_choice_is_respected(self):
+        import sqlite3
+        from nwn_voce import mumble_config, paths
+        mumble_config.seed_server_cert("h", digest="aaaa")
+        self.assertFalse(mumble_config.seed_server_cert("h"))
+        self.assertEqual(self.rows(), [("h", 64738, "aaaa")])
+
+    def test_digest_format(self):
+        from nwn_voce import mumble_config
+        self.assertRegex(mumble_config.SERVER_CERT_SHA1, r"^[0-9a-f]{40}$")
+
+
+class TestCrashDumpStash(TempAppData):
+    def test_old_dump_moved_aside(self):
+        from nwn_voce import paths
+        from nwn_voce.engine import Engine
+        dmp = os.path.join(paths.data_dir(), "mumble.dmp")
+        open(dmp, "wb").close()
+        Engine._stash_crash_dump()
+        self.assertFalse(os.path.exists(dmp), "Mumble mostrerebbe il 'Rapporto errori'")
+        self.assertEqual(len(os.listdir(os.path.join(paths.data_dir(), "crash"))), 1)
 
 
 class TestApiSurface(unittest.TestCase):

@@ -23,7 +23,7 @@ from typing import Callable, Optional
 from urllib.parse import quote
 
 from . import bridge, paths, settings, winproc
-from .mumble_config import write_config
+from .mumble_config import seed_server_cert, write_config
 from .relay_client import RelayClient
 
 log = logging.getLogger(__name__)
@@ -71,6 +71,11 @@ class Engine:
                 self.emit("config_err", err=str(exc))
                 return
             self.emit("config_ok")
+            self._stash_crash_dump()
+            try:
+                seed_server_cert(host, MUMBLE_PORT)
+            except Exception:  # noqa: BLE001 -- nel peggiore dei casi Mumble chiede lui
+                log.exception("pre-accettazione del certificato non riuscita")
 
             url = f"mumble://{quote(name, safe='')}@{host}:{MUMBLE_PORT}/"
             si = subprocess.STARTUPINFO()
@@ -103,6 +108,18 @@ class Engine:
                 self.emit("stopped")
 
     # -------------------------------------------------------------- interni
+    @staticmethod
+    def _stash_crash_dump() -> None:
+        """Se Mumble e' crashato in passato ha lasciato mumble.dmp: al prossimo avvio
+        mostrerebbe la sua finestra "Rapporto errori". La mettiamo da parte in
+        crash\\ (utile per capire il problema) invece di disturbare il giocatore."""
+        dmp = os.path.join(paths.data_dir(), "mumble.dmp")
+        if os.path.exists(dmp):
+            dest = os.path.join(paths.data_dir(), "crash")
+            os.makedirs(dest, exist_ok=True)
+            os.replace(dmp, os.path.join(dest, time.strftime("mumble-%Y%m%d-%H%M%S.dmp")))
+            log.warning("trovato un crash di Mumble precedente: spostato in %s", dest)
+
     def _emit_if(self, gen: int, key: str, **data) -> None:
         if gen == self._gen:           # messaggi di una sessione vecchia: zitti
             self.emit(key, **data)
