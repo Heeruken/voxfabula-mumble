@@ -1,4 +1,4 @@
-"""Aggiornamento automatico dalle Release di GitHub (Heeruken/nwn-voce).
+"""Aggiornamento automatico dalle Release di GitHub (Heeruken/voxfabula-mumble).
 
 All'avvio l'app chiede a GitHub qual e' l'ultima versione pubblicata. Se e' piu'
 nuova, CHIEDE all'utente; se accetta:
@@ -37,7 +37,7 @@ from . import APP_NAME, __version__, paths
 
 log = logging.getLogger(__name__)
 
-REPO = "Heeruken/nwn-voce"
+REPO = "Heeruken/voxfabula-mumble"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases/latest"
 ALLOWED_HOSTS = frozenset({

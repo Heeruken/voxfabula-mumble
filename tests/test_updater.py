@@ -70,6 +70,11 @@ class TestUpdater(unittest.TestCase):
     def tearDown(self):
         self.gh.close()
 
+    def test_points_to_the_real_repository(self):
+        # se cambia, le app gia' distribuite non troverebbero piu' gli aggiornamenti
+        self.assertEqual(updater.API_LATEST,
+                         "https://api.github.com/repos/Heeruken/voxfabula-mumble/releases/latest")
+
     def test_versions(self):
         self.assertTrue(updater.is_newer("1.10.0", "1.9.9"))
         self.assertFalse(updater.is_newer("1.2.0", "1.2"))
