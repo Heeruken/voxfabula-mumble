@@ -107,6 +107,10 @@ def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
     key = ptt_key if ptt_key and mumble_keys.is_supported(ptt_key) else mumble_keys.DEFAULT_KEY
     button, suppress = mumble_keys.encode(key)
     audio["transmit_mode"] = "VAD" if transmit == "vad" else "PTT"
+    # niente "bip" quando si preme/rilascia il tasto per parlare (o quando parte
+    # l'attivazione vocale): di base Mumble lo suona, ed e' fastidioso in gioco
+    audio["transmit_cue_when_ptt"] = False
+    audio["transmit_cue_when_vad"] = False
     shortcuts = data.setdefault("shortcuts", {})
     defined = [s for s in shortcuts.get("defined", [])
                if isinstance(s, dict) and s.get("index") != PTT_SHORTCUT_INDEX]

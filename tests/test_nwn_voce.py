@@ -233,6 +233,22 @@ class TestRenameCarryOver(TempAppData):
         self.assertIsNone(settings.load().get("name"))
 
 
+class TestNoTransmitBeep(TempAppData):
+    """Niente bip di Mumble premendo/rilasciando il tasto per parlare. Verificato
+    dal vivo: Mumble 1.5 legge e risalva audio.transmit_cue_when_ptt = false."""
+
+    def test_cues_off_in_both_modes(self):
+        from nwn_voce import mumble_config, paths
+        mdir = os.path.join(self._tmp.name, "mumble")
+        os.makedirs(mdir)
+        for mode in ("ptt", "vad"):
+            mumble_config.write_config(mdir, transmit=mode)
+            with open(paths.mumble_settings_file(), encoding="utf-8") as fh:
+                audio = json.load(fh)["audio"]
+            self.assertIs(audio["transmit_cue_when_ptt"], False)
+            self.assertIs(audio["transmit_cue_when_vad"], False)
+
+
 class TestServerAddress(TempAppData):
     """I giocatori scrivono solo il nome: il server e' voice.voxfabula.it, salvo
     'Server (avanzato)'. L'IP scritto a mano nelle versioni vecchie si ignora."""
