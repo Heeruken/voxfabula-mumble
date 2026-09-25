@@ -8,17 +8,36 @@ Ogni metodo chiamato dalla pagina ritorna subito.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import threading
 import traceback
 
 import webbrowser
 
-from . import APP_NAME, __version__, paths, settings, updater, winproc
+from . import APP_NAME, DEFAULT_SERVER, __version__, paths, settings, updater, winproc
 from .audio_devices import list_audio_devices
 from .engine import Engine
 
 log = logging.getLogger("nwn_voce")
+
+_HOST_RE = re.compile(r"^(?:(?:\d{1,3}\.){3}\d{1,3}|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)$")
+
+
+def _valid_host(h: str) -> bool:
+    if not _HOST_RE.match(h):
+        return False
+    if re.fullmatch(r"[\d.]+", h):
+        return all(0 <= int(p) <= 255 for p in h.split("."))
+    return True
+
+
+def server_address() -> str:
+    """Dove si collega l'app: 'Server (avanzato)' se impostato, se no quello di
+    Vox Fabula. Il vecchio campo 'host' (IP scritto a mano) si ignora apposta:
+    era spesso l'IP di casa di un momento, che poi cambia."""
+    s = (settings.load().get("server") or "").strip()
+    return s if s and _valid_host(s) else DEFAULT_SERVER
 
 
 def _setup_logging() -> None:
@@ -80,7 +99,17 @@ class Api:
     def get_settings(self) -> dict:
         d = settings.load()
         d["version"] = __version__
+        d["default_server"] = DEFAULT_SERVER
+        d.pop("host", None)          # indirizzo delle versioni vecchie: non si usa piu'
         return d
+
+    def save_server(self, server) -> dict:
+        """'Server (avanzato)': vuoto = voice.voxfabula.it."""
+        server = (server or "").strip()
+        if server and not _valid_host(server):
+            return {"ok": False}
+        settings.update(server=server)
+        return {"ok": True}
 
     def get_audio_devices(self) -> dict:
         with self._lock:
@@ -152,21 +181,18 @@ class Api:
         threading.Thread(target=work, daemon=True).start()
         return {"ok": True}
 
-    def start(self, host, name) -> dict:
+    def start(self, name) -> dict:
         with self._lock:
             upd = self._update
         if upd is not None and upd.mandatory:
             self._queue("update_required", version=upd.version)
             return {"ok": False}
-        host, name = (host or "").strip(), (name or "").strip()
-        if not host:
-            self._queue("need_ip")
-            return {"ok": False}
+        name = (name or "").strip()
         if not name:
             self._queue("need_name")
             return {"ok": False}
-        settings.update(host=host, name=name)
-        self._spawn(self._engine.start, host, name)
+        settings.update(name=name)
+        self._spawn(self._engine.start, server_address(), name)
         return {"ok": True}
 
     def stop(self) -> dict:

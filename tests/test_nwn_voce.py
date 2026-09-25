@@ -233,6 +233,48 @@ class TestRenameCarryOver(TempAppData):
         self.assertIsNone(settings.load().get("name"))
 
 
+class TestServerAddress(TempAppData):
+    """I giocatori scrivono solo il nome: il server e' voice.voxfabula.it, salvo
+    'Server (avanzato)'. L'IP scritto a mano nelle versioni vecchie si ignora."""
+
+    def test_default_and_old_host_ignored(self):
+        from nwn_voce import DEFAULT_SERVER, settings
+        from nwn_voce.main import server_address
+        self.assertEqual(server_address(), DEFAULT_SERVER)
+        settings.update(host="79.25.34.204")               # vecchio campo: IP di casa di un momento
+        self.assertEqual(server_address(), "voice.voxfabula.it")
+
+    def test_advanced_override(self):
+        from nwn_voce import settings
+        from nwn_voce.main import server_address
+        settings.update(server="127.0.0.1")
+        self.assertEqual(server_address(), "127.0.0.1")
+        settings.update(server="non valido!")               # scritto a mano male nel file: si ignora
+        self.assertEqual(server_address(), "voice.voxfabula.it")
+
+    def test_start_uses_server_and_save_validates(self):
+        from nwn_voce.main import Api
+        api = Api()
+        calls = []
+        try:
+            api._engine.start = lambda host, name: calls.append((host, name))
+            self.assertEqual(api.save_server("300.1.1.1"), {"ok": False})
+            self.assertEqual(api.save_server(" 127.0.0.1 "), {"ok": True})
+            self.assertEqual(api.start(" Hiruken "), {"ok": True})
+            self.assertEqual(api.start(""), {"ok": False})
+            self.assertEqual(api.save_server(""), {"ok": True})
+            api.start("Amico")
+            for _ in range(50):
+                if len(calls) == 2:
+                    break
+                time.sleep(0.02)
+            self.assertEqual(calls, [("127.0.0.1", "Hiruken"), ("voice.voxfabula.it", "Amico")])
+            self.assertNotIn("host", api.get_settings())
+            self.assertEqual(api.get_settings()["default_server"], "voice.voxfabula.it")
+        finally:
+            api._engine.stop(quiet=True)
+
+
 class TestPushToTalk(TempAppData):
     # scritti da Mumble stesso (test dal vivo del 25/09)
     MUMBLE_CAPSLOCK = "AAAEAAAAAAAOSW5wdXRLZXlib2FyZAAAADo="

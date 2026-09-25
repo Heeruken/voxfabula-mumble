@@ -43,12 +43,6 @@
 
     <div class="card">
       <div class="field">
-        <label for="ip" data-i18n="label_ip"></label>
-        <input id="ip" type="text" autocomplete="off" spellcheck="false" data-ph="ph_ip" oninput="clearErr('ip')">
-        <div class="err" id="err-ip"></div>
-      </div>
-
-      <div class="field">
         <label for="name" data-i18n="label_name"></label>
         <input id="name" type="text" autocomplete="off" spellcheck="false" data-ph="ph_name" oninput="clearErr('name')">
         <div class="err" id="err-name"></div>
@@ -99,6 +93,12 @@
           </div>
           <div class="set-hint" id="ptt-hint"></div>
         </div>
+        <div class="field">
+          <label for="set-server" data-i18n="set_server"></label>
+          <input id="set-server" type="text" autocomplete="off" spellcheck="false" oninput="clearErr('set-server')">
+          <div class="err" id="err-set-server"></div>
+          <div class="set-hint" data-i18n="set_server_hint"></div>
+        </div>
         <div class="set-note" data-i18n="set_note"></div>
         <div class="actions">
           <button class="btn btn-start" onclick="saveSettings()" data-i18n="set_save"></button>
@@ -112,12 +112,11 @@
     const I18N = {
       it: {
         tag: "voce di prossimità per Neverwinter Nights",
-        label_ip: "Indirizzo del server", ph_ip: "IP o nome, es. play.mioserver.it",
         label_name: "Il tuo nome (uguale al nome account NWN)", ph_name: "es. Hiruken",
         btn_connect: "Connetti", btn_stop: "Ferma",
         status_title: "Stato",
         footer: "Apri NWN a parte ed entra nel server.",
-        err_ip: "Indirizzo del server non valido.", err_name: "Scrivi il tuo nome.",
+        err_name: "Scrivi il tuo nome.", err_server: "Indirizzo non valido.",
         client_start: "Connessione a {host} come {name}…",
         mumble_missing: "Manca Mumble nel pacchetto: reinstalla Vox Fabula Voice.",
         config_ok: "Mumble preparato (impostazioni separate da qualsiasi altro Mumble).",
@@ -132,13 +131,15 @@
         mumble_closed: "Mumble è stato chiuso. Premi Ferma e poi Connetti per riaprirlo.",
         bridge_error: "La voce si è fermata per un errore ({err}). Premi Ferma e riprova.",
         stopped: "Tutto fermato.",
-        need_name: "Scrivi il tuo nome.", need_ip: "Scrivi l'indirizzo del server.",
+        need_name: "Scrivi il tuo nome.",
         fatal: "Errore: {err}",
         settings_title: "Impostazioni",
         set_name: "Nome (nome account NWN)",
         set_mic: "Microfono", set_spk: "Casse / cuffie",
         set_default: "Predefinito di Windows",
         set_note: "Le impostazioni valgono dal prossimo Connetti.",
+        set_server: "Server (avanzato)",
+        set_server_hint: "Lascia vuoto: l'app va da sola sul server di Vox Fabula. Serve solo per prove.",
         set_save: "Salva", set_back: "Indietro",
         set_transmit: "Come parli",
         tx_ptt: "Premi per parlare (tieni premuto un tasto)",
@@ -161,12 +162,11 @@
       },
       en: {
         tag: "proximity voice for Neverwinter Nights",
-        label_ip: "Server address", ph_ip: "IP or name, e.g. play.myserver.com",
         label_name: "Your name (same as your NWN account name)", ph_name: "e.g. Hiruken",
         btn_connect: "Connect", btn_stop: "Stop",
         status_title: "Status",
         footer: "Open NWN separately and join the server.",
-        err_ip: "Invalid server address.", err_name: "Enter your name.",
+        err_name: "Enter your name.", err_server: "Invalid address.",
         client_start: "Connecting to {host} as {name}…",
         mumble_missing: "Mumble is missing from the package: reinstall Vox Fabula Voice.",
         config_ok: "Mumble ready (settings kept apart from any other Mumble).",
@@ -181,13 +181,15 @@
         mumble_closed: "Mumble was closed. Press Stop, then Connect to reopen it.",
         bridge_error: "Voice stopped because of an error ({err}). Press Stop and try again.",
         stopped: "Everything stopped.",
-        need_name: "Enter your name.", need_ip: "Enter the server address.",
+        need_name: "Enter your name.",
         fatal: "Error: {err}",
         settings_title: "Settings",
         set_name: "Name (NWN account name)",
         set_mic: "Microphone", set_spk: "Speakers / headphones",
         set_default: "Windows default",
         set_note: "Settings apply from the next Connect.",
+        set_server: "Server (advanced)",
+        set_server_hint: "Leave empty: the app finds the Vox Fabula server by itself. Only for testing.",
         set_save: "Save", set_back: "Back",
         set_transmit: "How you talk",
         tx_ptt: "Push to talk (hold a key)",
@@ -318,22 +320,19 @@
       running = r;
       document.getElementById("btn-go").disabled = r || !!(upd && upd.mandatory);
       document.getElementById("btn-stop").disabled = !r;
-      document.getElementById("ip").disabled = r;
       document.getElementById("name").disabled = r;
     }
 
     async function go() {
       const name = document.getElementById("name").value.trim();
-      const ip = document.getElementById("ip").value.trim();
       let bad = false;
-      if (!validHost(ip)) { showErr("ip", "err_ip"); bad = true; }
       if (!name) { showErr("name", "err_name"); bad = true; }
       if (bad) return;
       document.getElementById("log").innerHTML = "";
       hideReady();
       setRunning(true);
       let res;
-      try { res = await window.pywebview.api.start(ip, name); } catch (e) { res = { ok: false }; }
+      try { res = await window.pywebview.api.start(name); } catch (e) { res = { ok: false }; }
       if (!res || !res.ok) setRunning(false);
     }
 
@@ -436,6 +435,8 @@
       document.getElementById("set-transmit").value = s.transmit === "vad" ? "vad" : "ptt";
       pttKey = s.ptt_key || DEFAULT_KEY;
       document.getElementById("ptt-hint").textContent = "";
+      document.getElementById("set-server").value = s.server || "";
+      clearErr("set-server");
       renderVoice();
     }
     async function saveSettings() {
@@ -443,6 +444,9 @@
       const inp = document.getElementById("set-input").value;
       const out = document.getElementById("set-output").value;
       const tx = document.getElementById("set-transmit").value;
+      const server = document.getElementById("set-server").value.trim();
+      if (server && !validHost(server)) { showErr("set-server", "err_server"); return; }
+      try { await window.pywebview.api.save_server(server); } catch (e) {}
       try { await window.pywebview.api.save_audio(name, inp, out); } catch (e) {}
       try { await window.pywebview.api.save_voice(tx, pttKey); } catch (e) {}
       if (name) document.getElementById("name").value = name;
@@ -462,7 +466,7 @@
         const s = await window.pywebview.api.get_settings();
         if (s) {
           if (s.name) document.getElementById("name").value = s.name;
-          if (s.host) document.getElementById("ip").value = s.host;
+          if (s.default_server) document.getElementById("set-server").placeholder = s.default_server;
           if (s.lang) l = s.lang;
           if (s.version) document.getElementById("ver").textContent = "v" + s.version;
         }

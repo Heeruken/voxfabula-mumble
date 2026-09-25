@@ -8,5 +8,9 @@ posizione dei personaggi e la passa al plugin di portata vc_range.
 
 __version__ = "1.2.1"
 APP_NAME = "Vox Fabula Voice"
+# Il server della voce: un nome che punta sempre a casa del server (lo tiene
+# aggiornato C:\NWN\scripts\ddns_voice.py quando cambia l'IP). I giocatori
+# scrivono solo il loro nome; "Server (avanzato)" nell'ingranaggio lo sostituisce.
+DEFAULT_SERVER = "voice.voxfabula.it"
 # nome delle versioni di prova precedenti: da li' recuperiamo le impostazioni
 OLD_APP_NAME = "NWN Voce"

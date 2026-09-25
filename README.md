@@ -7,8 +7,10 @@ Qui c'è tutto il sistema voce: l'**app** che aprono i giocatori (`nwn_voce/`), 
 ## Per i giocatori
 
 1. Installa con `VoxFabula-Voice-Setup-<versione>.exe`, oppure scompatta lo zip `…-portatile.zip` dove vuoi.
-2. Apri **Vox Fabula Voice**, scrivi l'indirizzo del server e il tuo **nome account NWN**, premi **Connetti**.
+2. Apri **Vox Fabula Voice**, scrivi il tuo **nome account NWN**, premi **Connetti**. L'indirizzo non serve: l'app va da sola su `voice.voxfabula.it`.
 3. Apri NWN ed entra nel server. Quando sei in gioco la voce diventa **ATTIVA**.
+
+**L'indirizzo della voce.** `voice.voxfabula.it` è un record DNS (Cloudflare, nuvola grigia) che punta all'IP di casa del server. L'IP di casa cambia, e lo tiene aggiornato `C:\NWN\scripts\ddns_voice.py` sul PC del server: un'attività di Windows lo lancia all'accesso e poi ogni 5 minuti, con una chiave Cloudflare che può modificare solo il DNS di voxfabula.it. Il registro è in `%LOCALAPPDATA%\VoxFabula\ddns-voice.log`. Dopo un cambio di IP la voce torna al massimo in 5-6 minuti: il relay si ricollega da solo e rilegge il nome a ogni tentativo. Nell'ingranaggio c'è **Server (avanzato)**, vuoto di base, per le prove (per esempio `127.0.0.1` sul PC del server). L'IP scritto a mano nelle versioni precedenti viene ignorato.
 
 L'app non installa niente nel sistema e non chiede di essere amministratore. Usa un Mumble suo, con impostazioni sue: se usi già Mumble per altro, **non viene né chiuso né modificato**, e i due possono restare aperti insieme. Tutti i dati dell'app stanno in `%APPDATA%\Vox Fabula Voice`.
 
