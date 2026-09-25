@@ -2,7 +2,7 @@
 
 Voce di prossimità per **Neverwinter Nights: Enhanced Edition**. Più un personaggio è lontano, più lo senti piano. Chi **sussurra** si sente entro 4 m, chi **parla** entro 12 m, chi **urla** entro 35 m. Personaggi in aree diverse non si sentono.
 
-Questo è il **client**, cioè il programma che aprono i giocatori. Server, relay e bot stanno in un altro progetto (`nwn_mumble`, cartella `server/`).
+Qui c'è tutto il sistema voce: l'**app** che aprono i giocatori (`nwn_voce/`), il **relay** che gira sul server in Docker (`relay/`) e il **plugin** di Mumble (`plugin/`). Il resto dello stack del server (NWN, server Mumble, bot Discord) sta nel `docker-compose.yml` del server.
 
 ## Per i giocatori
 
@@ -57,6 +57,26 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 **Mumble portatile** (`vendor/mumble/`, non versionato): è il client Mumble 1.5 (licenza BSD, licenze in `vendor/mumble/licenses/`) con nella cartella `plugins/` solo `link.dll` e `vc_range.dll`. Sono stati tolti i plugin di altri giochi, l'overlay (`mumble_ol*`, che si inietta nei processi dei giochi) e l'helper per le tastiere Logitech G15: non servono, e l'overlay è il tipo di file che gli antivirus guardano male.
 
 **Plugin**: `plugin\build.bat` lo ricompila con Visual Studio 2022. La `vc_range.dll` compilata è versionata, e la build la copia in `vendor\mumble\plugins\`.
+
+## Il relay (lato server)
+
+Gira nel Docker del server. Legge dal database del gioco dove sta ogni personaggio (lo scrive `vc_voice.nss` nel modulo) e lo manda alle app sulla porta **27890**. Dentro ci sono anche il bot **"chi parla"**, che accende l'icona sopra il personaggio, e la **voce privata DM** ("Appari solo a").
+
+| File | Cosa fa |
+|---|---|
+| `relay/server.py` | accetta le app, manda posizione e roster; scrive l'icona "chi parla" |
+| `relay/positions.py` | legge `vc_positions`; voce privata DM (`vc_priv_session` / `vc_priv_member`) |
+| `relay/talk_listener.py` | bot Mumble che sente chi parla |
+| `relay/fantoccio.py` | bot-eco **di test** (solo con `--fantoccio`) |
+
+Il protocollo con le app è **un file solo**, `nwn_voce/net_protocol.py`, usato da entrambi.
+
+```
+docker build -f relay/Dockerfile -t nwn-voce-relay .      # dalla radice del progetto
+python -m relay --server nwnvoce --port 27890 --db <database> --no-talk   # da sorgente, per prove
+```
+
+La build si fa dalla radice, ma il `.dockerignore` lascia passare solo `relay/` e i tre file del protocollo: a Docker arrivano pochi KB. Le versioni sono fissate (`pymumble==1.6.1`, che a sua volta fissa `protobuf` e `opuslib`), quindi la build non cambia da sola nel tempo.
 
 ## Aggiornamento automatico
 

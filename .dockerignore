@@ -1,0 +1,9 @@
+# Serve SOLO alla build del relay (relay/Dockerfile). Si esclude tutto e si
+# lascia passare solo il necessario: niente Mumble, niente dist/, niente build/.
+*
+!relay
+!relay/**
+!nwn_voce/__init__.py
+!nwn_voce/net_protocol.py
+!nwn_voce/state.py
+**/__pycache__

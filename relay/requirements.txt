@@ -1,0 +1,3 @@
+# Versione ESATTA: pymumble 1.6.1 fissa a sua volta protobuf==3.12.2 e
+# opuslib==3.0.1, quindi la build del relay non cambia mai da sola.
+pymumble==1.6.1
