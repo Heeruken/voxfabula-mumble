@@ -1,4 +1,4 @@
-# Risorsa "Proprieta' > Dettagli" di NWN Voce.exe. {T} e {V} li riempie lo spec
+# Risorsa "Proprieta' > Dettagli" di Vox Fabula Voice.exe. {T} e {V} li riempie lo spec
 # con la versione di nwn_voce/__init__.py.
 VSVersionInfo(
   ffi=FixedFileInfo(
@@ -17,11 +17,11 @@ VSVersionInfo(
         '041004B0',
         [
           StringStruct('CompanyName', 'VoxFabula'),
-          StringStruct('FileDescription', 'NWN Voce - voce di prossimita per Neverwinter Nights'),
+          StringStruct('FileDescription', 'Vox Fabula Voice - voce di prossimita per Neverwinter Nights'),
           StringStruct('FileVersion', '{V}'),
-          StringStruct('InternalName', 'NWN Voce'),
-          StringStruct('OriginalFilename', 'NWN Voce.exe'),
-          StringStruct('ProductName', 'NWN Voce'),
+          StringStruct('InternalName', 'Vox Fabula Voice'),
+          StringStruct('OriginalFilename', 'Vox Fabula Voice.exe'),
+          StringStruct('ProductName', 'Vox Fabula Voice'),
           StringStruct('ProductVersion', '{V}'),
           StringStruct('LegalCopyright', 'VoxFabula. Include Mumble (licenza BSD).')
         ]

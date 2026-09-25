@@ -1,4 +1,4 @@
-"""NWN Voce - la finestra (pywebview + interfaccia HTML).
+"""Vox Fabula Voice - la finestra (pywebview + interfaccia HTML).
 
 Regola anti-crash: la finestra si tocca SOLO dal suo thread. Il motore gira nei
 thread e si limita ad ACCODARE chiavi di stato; la pagina le legge con poll().
@@ -185,8 +185,11 @@ def main() -> None:
 
     api = Api()
     api._window = webview.create_window(APP_NAME, paths.web_index(), js_api=api,
-                                       width=560, height=780, min_size=(460, 640),
-                                       background_color="#12100c")
+                                       width=560, height=860, min_size=(460, 680),
+                                       background_color="#0e0b22")
+    # ridotta a icona mentre si gioca: la pagina ferma le animazioni (lo legge da poll)
+    api._window.events.minimized += lambda *a: api._queue("window_minimized")
+    api._window.events.restored += lambda *a: api._queue("window_restored")
     webview.start()
     # finestra chiusa: fermiamo ponte e Mumble prima di uscire
     api._engine.stop(quiet=True)

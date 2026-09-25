@@ -2,13 +2,23 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
-  <!-- Cinzel/Inter da Google Fonts; senza rete si usano i fallback di style.css. -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Font e immagini sono tutti dentro l'app: nessuna richiesta a internet. -->
+  <link rel="preload" href="fonts/cinzel-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/alegreya-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/alegreya-sc-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Mare Astrale animato, come le pagine Eventi e Lore di voxfabula.it -->
+  <div class="ambient" aria-hidden="true">
+    <span class="aurora aurora-1"></span>
+    <span class="aurora aurora-2"></span>
+    <span class="aurora aurora-3"></span>
+    <span class="stella-cadente stella-cadente-1"></span>
+    <span class="stella-cadente stella-cadente-2"></span>
+    <div class="moti"><span class="mote"></span><span class="mote"></span><span class="mote"></span><span class="mote"></span><span class="mote"></span><span class="mote"></span></div>
+  </div>
+
   <div class="app">
     <header>
       <button class="gear" onclick="openSettings()" title="Impostazioni" aria-label="Impostazioni">&#9881;</button>
@@ -16,11 +26,12 @@
         <button class="lang" data-lang="it" onclick="setLang('it')">IT</button>
         <button class="lang" data-lang="en" onclick="setLang('en')">EN</button>
       </div>
-      <div class="logo">NWN <span>Voce</span></div>
+      <img class="brand-logo" src="logo-animato.webp" alt="Vox Fabula" width="440" height="388">
+      <div class="brand-sub">VOICE</div>
       <div class="tag" data-i18n="tag"></div>
     </header>
 
-    <div id="update" class="update" style="display:none">
+    <div id="update" class="card update" style="display:none">
       <div class="update-title" id="upd-title"></div>
       <div class="update-notes" id="upd-notes"></div>
       <div class="update-progress" id="upd-progress"></div>
@@ -108,7 +119,7 @@
         footer: "Apri NWN a parte ed entra nel server.",
         err_ip: "Indirizzo del server non valido.", err_name: "Scrivi il tuo nome.",
         client_start: "Connessione a {host} come {name}…",
-        mumble_missing: "Manca Mumble nel pacchetto: reinstalla NWN Voce.",
+        mumble_missing: "Manca Mumble nel pacchetto: reinstalla Vox Fabula Voice.",
         config_ok: "Mumble preparato (impostazioni separate da qualsiasi altro Mumble).",
         config_err: "Non riesco a preparare Mumble: {err}",
         mumble_launched: "Mumble avviato e collegato a {host} (icona nella barra in basso).",
@@ -143,7 +154,7 @@
         upd_title_required: "Per collegarti devi aggiornare alla versione {version}",
         upd_go: "Aggiorna", upd_go_page: "Scarica", upd_later: "Più tardi",
         update_progress: "Scaricamento… {pct}%",
-        update_ready: "Aggiornamento verificato: NWN Voce si riapre da sola tra un attimo.",
+        update_ready: "Aggiornamento verificato: l'app si riapre da sola tra un attimo.",
         update_failed: "Aggiornamento non riuscito: {err}",
         update_page_opened: "Ho aperto nel browser la pagina della nuova versione.",
         update_required: "Prima di collegarti devi aggiornare alla versione {version}."
@@ -157,7 +168,7 @@
         footer: "Open NWN separately and join the server.",
         err_ip: "Invalid server address.", err_name: "Enter your name.",
         client_start: "Connecting to {host} as {name}…",
-        mumble_missing: "Mumble is missing from the package: reinstall NWN Voce.",
+        mumble_missing: "Mumble is missing from the package: reinstall Vox Fabula Voice.",
         config_ok: "Mumble ready (settings kept apart from any other Mumble).",
         config_err: "Could not set up Mumble: {err}",
         mumble_launched: "Mumble started and connected to {host} (icon in the taskbar).",
@@ -192,7 +203,7 @@
         upd_title_required: "Update to version {version} to connect",
         upd_go: "Update", upd_go_page: "Download", upd_later: "Later",
         update_progress: "Downloading… {pct}%",
-        update_ready: "Update verified: NWN Voce will reopen in a moment.",
+        update_ready: "Update verified: the app will reopen in a moment.",
         update_failed: "Update failed: {err}",
         update_page_opened: "Opened the new version's page in your browser.",
         update_required: "Update to version {version} before connecting."
@@ -283,6 +294,10 @@
     }
 
     function addStatus(key, data) {
+      // finestra ridotta a icona (avviso dal Python): il cielo animato si ferma.
+      // Il logo no: come sul sito la fiamma si accende una volta sola e resta ferma.
+      if (key === "window_minimized") { document.body.classList.add("paused"); return; }
+      if (key === "window_restored") { document.body.classList.remove("paused"); return; }
       if (handleUpdateStatus(key, data)) return;
       const log = document.getElementById("log");
       const line = document.createElement("div");

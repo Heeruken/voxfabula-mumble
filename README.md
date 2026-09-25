@@ -1,4 +1,4 @@
-# NWN Voce
+# Vox Fabula Voice
 
 Voce di prossimità per **Neverwinter Nights: Enhanced Edition**. Più un personaggio è lontano, più lo senti piano. Chi **sussurra** si sente entro 4 m, chi **parla** entro 12 m, chi **urla** entro 35 m. Personaggi in aree diverse non si sentono.
 
@@ -6,18 +6,18 @@ Qui c'è tutto il sistema voce: l'**app** che aprono i giocatori (`nwn_voce/`), 
 
 ## Per i giocatori
 
-1. Installa con `NWN-Voce-Setup-<versione>.exe`, oppure scompatta lo zip `…-portatile.zip` dove vuoi.
-2. Apri **NWN Voce**, scrivi l'indirizzo del server e il tuo **nome account NWN**, premi **Connetti**.
+1. Installa con `VoxFabula-Voice-Setup-<versione>.exe`, oppure scompatta lo zip `…-portatile.zip` dove vuoi.
+2. Apri **Vox Fabula Voice**, scrivi l'indirizzo del server e il tuo **nome account NWN**, premi **Connetti**.
 3. Apri NWN ed entra nel server. Quando sei in gioco la voce diventa **ATTIVA**.
 
-L'app non installa niente nel sistema e non chiede di essere amministratore. Usa un Mumble suo, con impostazioni sue: se usi già Mumble per altro, **non viene né chiuso né modificato**, e i due possono restare aperti insieme. Tutti i dati dell'app stanno in `%APPDATA%\NWN Voce`.
+L'app non installa niente nel sistema e non chiede di essere amministratore. Usa un Mumble suo, con impostazioni sue: se usi già Mumble per altro, **non viene né chiuso né modificato**, e i due possono restare aperti insieme. Tutti i dati dell'app stanno in `%APPDATA%\Vox Fabula Voice`.
 
 **"Windows ha protetto il PC"**: l'app non è firmata con un certificato a pagamento, quindi al primo avvio Windows lo dice. Clicca **Ulteriori informazioni → Esegui comunque**. Le impronte SHA-256 dei file ufficiali sono nelle note di ogni versione: puoi controllarle su [VirusTotal](https://www.virustotal.com).
 
 ## Come funziona
 
 ```
-server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► NWN Voce (questo client)
+server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► Vox Fabula Voice (questo client)
                                                            │  ponte (thread)
                                                            ▼
                                           memoria condivisa "nwn_voice_roster"
@@ -29,7 +29,7 @@ server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► NWN
 
 - Le posizioni le scrive il **server** (NWScript). Il client di gioco non viene toccato: niente lettura della memoria di NWN, quindi nessuna patch del gioco lo rompe.
 - L'audio posizionale nativo di Mumble è **spento**, perché ronza (bug Mumble #4169). Distanza, portata e pan stereo li fa tutti `vc_range`.
-- Il nostro Mumble parte con `mumble.exe -m -c "%APPDATA%\NWN Voce\mumble_settings.json"`: `-c` usa un file di impostazioni separato, `-m` permette di girare accanto a un altro Mumble.
+- Il nostro Mumble parte con `mumble.exe -m -c "%APPDATA%\Vox Fabula Voice\mumble_settings.json"`: `-c` usa un file di impostazioni separato, `-m` permette di girare accanto a un altro Mumble.
 
 | File | Cosa fa |
 |---|---|
@@ -58,6 +58,8 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 
 **Plugin**: `plugin\build.bat` lo ricompila con Visual Studio 2022. La `vc_range.dll` compilata è versionata, e la build la copia in `vendor\mumble\plugins\`.
 
+**Grafica**: presa da voxfabula.it (repo `Heeruken/voxfabula-site`), stile dei capitoli "Mare Astrale". Nell'app ci sono il logo animato (`web/logo-animato.webp`), i font Cinzel e Alegreya (`web/fonts/`, licenza OFL) e lo sfondo astrale, tutto dentro il pacchetto: nessuna richiesta a internet. L'icona e le immagini dell'installer si rigenerano da `packaging/brand/` con `python packaging/make_icon.py`. Quando la finestra è ridotta a icona le animazioni si fermano.
+
 ## Il relay (lato server)
 
 Gira nel Docker del server. Legge dal database del gioco dove sta ogni personaggio (lo scrive `vc_voice.nss` nel modulo) e lo manda alle app sulla porta **27890**. Dentro ci sono anche il bot **"chi parla"**, che accende l'icona sopra il personaggio, e la **voce privata DM** ("Appari solo a").
@@ -80,7 +82,7 @@ La build si fa dalla radice, ma il `.dockerignore` lascia passare solo `relay/` 
 
 ## Aggiornamento automatico
 
-All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-mumble`. Se è più nuova, mostra un riquadro con le note della versione e i pulsanti **Aggiorna / Più tardi**. Se l'utente accetta, l'app scarica `NWN-Voce-Setup-<ver>.exe`, ne verifica l'impronta SHA-256 (quella che GitHub calcola da solo per ogni file), si chiude e lancia l'installer in modalità silenziosa. L'installer sostituisce i file e la riapre.
+All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-mumble`. Se è più nuova, mostra un riquadro con le note della versione e i pulsanti **Aggiorna / Più tardi**. Se l'utente accetta, l'app scarica `VoxFabula-Voice-Setup-<ver>.exe`, ne verifica l'impronta SHA-256 (quella che GitHub calcola da solo per ogni file), si chiude e lancia l'installer in modalità silenziosa. L'installer sostituisce i file e la riapre.
 
 - Si scarica solo via HTTPS e solo da domini GitHub, controllati anche dopo i redirect. Una Release senza impronta viene ignorata; un file che non corrisponde viene buttato.
 - Chi usa lo **zip portatile** non si aggiorna da solo: il pulsante apre la pagina della versione nel browser.
@@ -90,7 +92,7 @@ All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-mumb
 
 1. Alza `__version__` in `nwn_voce/__init__.py` e lancia `packaging\build.ps1`.
 2. Su GitHub: **Releases → Draft a new release**. Tag `v<versione>` (per esempio `v1.2.1`), titolo, e nelle note cosa cambia, scritto per i giocatori.
-3. Trascina dentro `NWN-Voce-Setup-<versione>.exe` e lo zip portatile, poi **Publish release**. Non spuntare "pre-release": le pre-release vengono ignorate, ed è un modo comodo per provare una versione senza mandarla a tutti.
+3. Trascina dentro `VoxFabula-Voice-Setup-<versione>.exe` e lo zip portatile, poi **Publish release**. Non spuntare "pre-release": le pre-release vengono ignorate, ed è un modo comodo per provare una versione senza mandarla a tutti.
 
 Da quel momento, chi apre l'app vede l'aggiornamento. GitHub permette 60 controlli l'ora per ogni rete: con un controllo per avvio si resta molto sotto.
 
@@ -109,5 +111,5 @@ Senza certificato l'avviso "editore sconosciuto" resta. Le cose gratuite che lo 
 - Mumble con **impostazioni e database suoi**: non chiude più il Mumble dell'utente (`taskkill` eliminato) e non ne modifica la configurazione.
 - Tolta la modalità "Ospita" (il server ora gira su Docker), insieme alla ricerca dell'IP pubblico.
 - Via overlay, helper G15, 50 plugin di altri giochi e PortAudio: 90 MB invece di 113, e solo 2 eseguibili nel pacchetto.
-- Installer per utente (Inno Setup), impostazioni e log in `%APPDATA%\NWN Voce`, blocco della seconda istanza, messaggi di stato che dicono cosa non va (relay irraggiungibile, Mumble chiuso…).
+- Installer per utente (Inno Setup), impostazioni e log in `%APPDATA%\Vox Fabula Voice`, blocco della seconda istanza, messaggi di stato che dicono cosa non va (relay irraggiungibile, Mumble chiuso…).
 - Protocollo col relay **invariato**: chi ha ancora la 1.0 continua a funzionare.

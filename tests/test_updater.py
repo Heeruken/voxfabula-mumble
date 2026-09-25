@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from nwn_voce import updater  # noqa: E402
 
-INSTALLER = b"MZ finto installer NWN Voce" * 1000
+INSTALLER = b"MZ finto installer Vox Fabula Voice" * 1000
 SHA = hashlib.sha256(INSTALLER).hexdigest()
 
 
@@ -47,12 +47,12 @@ class FakeGitHub:
     def release(self, tag="v9.9.9", body="Novità.", digest=f"sha256:{SHA}", **extra):
         rel = {"tag_name": tag, "body": body, "html_url": self.base + "/page",
                "draft": False, "prerelease": False,
-               "assets": [{"name": f"NWN-Voce-Setup-{tag.lstrip('v')}.exe",
-                           "browser_download_url": f"{self.base}/dl/NWN-Voce-Setup-{tag.lstrip('v')}.exe",
+               "assets": [{"name": f"VoxFabula-Voice-Setup-{tag.lstrip('v')}.exe",
+                           "browser_download_url": f"{self.base}/dl/VoxFabula-Voice-Setup-{tag.lstrip('v')}.exe",
                            "size": len(INSTALLER), "digest": digest}]}
         rel.update(extra)
         self.routes["/latest"] = (200, {"Content-Type": "application/json"}, json.dumps(rel).encode())
-        self.routes[f"/dl/NWN-Voce-Setup-{tag.lstrip('v')}.exe"] = (200, {}, INSTALLER)
+        self.routes[f"/dl/VoxFabula-Voice-Setup-{tag.lstrip('v')}.exe"] = (200, {}, INSTALLER)
 
     def close(self):
         self.srv.shutdown()
@@ -134,7 +134,7 @@ class TestUpdater(unittest.TestCase):
         self.gh.release()
         upd = updater.check("1.2.0", api_url=self.api, **LOCAL)
         # il download rimbalza su "localhost": stesso PC, ma NON e' un dominio consentito
-        self.gh.routes[f"/dl/NWN-Voce-Setup-9.9.9.exe"] = (
+        self.gh.routes[f"/dl/VoxFabula-Voice-Setup-9.9.9.exe"] = (
             302, {"Location": f"http://localhost:{self.gh.port}/altro"}, b"")
         self.gh.routes["/altro"] = (200, {}, INSTALLER)
         with tempfile.TemporaryDirectory() as d, self.assertRaises(updater.UpdateError):

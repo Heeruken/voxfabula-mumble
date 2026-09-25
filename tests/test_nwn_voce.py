@@ -208,6 +208,31 @@ class TempAppData(unittest.TestCase):
         self._tmp.cleanup()
 
 
+class TestRenameCarryOver(TempAppData):
+    """Col nome nuovo ("Vox Fabula Voice") le impostazioni della versione di prova
+    ("NWN Voce") vengono copiate, una volta sola, e la cartella vecchia resta."""
+
+    def test_settings_copied_once(self):
+        from nwn_voce import OLD_APP_NAME, paths, settings
+        old = os.path.join(self._tmp.name, OLD_APP_NAME)
+        os.makedirs(old)
+        with open(os.path.join(old, "settings.json"), "w", encoding="utf-8") as fh:
+            json.dump({"name": "Hiruken", "host": "127.0.0.1"}, fh)
+        with open(os.path.join(old, "nwnvoce.log"), "w") as fh:
+            fh.write("vecchio log")
+        self.assertEqual(settings.load().get("name"), "Hiruken")
+        self.assertTrue(os.path.isfile(os.path.join(old, "settings.json")))       # copiata, non spostata
+        self.assertFalse(os.path.exists(os.path.join(paths.data_dir(), "nwnvoce.log")))
+        # la cartella nuova esiste gia': un cambio nel vecchio non la tocca piu'
+        with open(os.path.join(old, "settings.json"), "w", encoding="utf-8") as fh:
+            json.dump({"name": "Altro"}, fh)
+        self.assertEqual(settings.load().get("name"), "Hiruken")
+
+    def test_fresh_install_without_old_folder(self):
+        from nwn_voce import settings
+        self.assertIsNone(settings.load().get("name"))
+
+
 class TestPushToTalk(TempAppData):
     # scritti da Mumble stesso (test dal vivo del 25/09)
     MUMBLE_CAPSLOCK = "AAAEAAAAAAAOSW5wdXRLZXlib2FyZAAAADo="

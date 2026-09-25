@@ -1,17 +1,17 @@
-# Build di NWN Voce in UN comando, dalla radice del progetto:
+# Build di Vox Fabula Voice in UN comando, dalla radice del progetto:
 #     powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 #
 # Produce in dist\:
-#   NWN Voce\                         l'app (cartella)
-#   NWN-Voce-<ver>-portatile.zip      da scompattare e usare senza installare
-#   NWN-Voce-Setup-<ver>.exe          installer (se Inno Setup 6 e' installato)
+#   Vox Fabula Voice\                     l'app (cartella)
+#   VoxFabula-Voice-<ver>-portatile.zip   da scompattare e usare senza installare
+#   VoxFabula-Voice-Setup-<ver>.exe       installer (se Inno Setup 6 e' installato)
 # e stampa l'impronta SHA-256 di ogni file (da controllare su VirusTotal).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 
 $version = (Select-String -Path 'nwn_voce\__init__.py' -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-Write-Host "NWN Voce $version" -ForegroundColor Cyan
+Write-Host "Vox Fabula Voice $version" -ForegroundColor Cyan
 
 # 1) i test devono passare: niente build di una versione rotta
 Write-Host "Test..." -ForegroundColor Cyan
@@ -30,8 +30,8 @@ python -m PyInstaller packaging\nwn-voce.spec --noconfirm --distpath dist --work
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller fallito." }
 
 # 4) zip portatile
-$zip = "dist\NWN-Voce-$version-portatile.zip"
-Compress-Archive -Path 'dist\NWN Voce' -DestinationPath $zip -CompressionLevel Optimal
+$zip = "dist\VoxFabula-Voice-$version-portatile.zip"
+Compress-Archive -Path 'dist\Vox Fabula Voice' -DestinationPath $zip -CompressionLevel Optimal
 
 # 5) installer
 $iscc = @(

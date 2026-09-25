@@ -1,10 +1,10 @@
 """Dove l'app tiene le sue cose.
 
-Tutto sta in UNA cartella per utente:  %APPDATA%\\NWN Voce\\
+Tutto sta in UNA cartella per utente:  %APPDATA%\\Vox Fabula Voice\\
   settings.json          nome, server, lingua, microfono/casse
   mumble_settings.json   le impostazioni del NOSTRO Mumble (mai quelle dell'utente)
   mumble.sqlite          il database del nostro Mumble
-  nwnvoce.log            log dell'ultima sessione (sovrascritto a ogni avvio)
+  voice.log              log dell'ultima sessione (sovrascritto a ogni avvio)
 Niente file in Temp, niente scritture accanto all'exe (che da installato sta in
 una cartella di programma).
 """
@@ -12,16 +12,34 @@ una cartella di programma).
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 
-from . import APP_NAME
+from . import APP_NAME, OLD_APP_NAME
+
+# file da riportare dalla cartella col vecchio nome dell'app (nome, server, tasto...)
+_CARRY_OVER = ("settings.json", "mumble_settings.json", "mumble.sqlite")
 
 
 def data_dir() -> str:
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
     d = os.path.join(base, APP_NAME)
-    os.makedirs(d, exist_ok=True)
+    if not os.path.isdir(d):
+        os.makedirs(d, exist_ok=True)
+        _carry_over(os.path.join(base, OLD_APP_NAME), d)
     return d
+
+
+def _carry_over(old: str, new: str) -> None:
+    """Prima apertura col nome nuovo: copia (non sposta) le impostazioni della
+    versione di prova "NWN Voce", cosi' nessuno deve rifarle."""
+    for name in _CARRY_OVER:
+        src = os.path.join(old, name)
+        if os.path.isfile(src):
+            try:
+                shutil.copy2(src, os.path.join(new, name))
+            except OSError:
+                pass
 
 
 def settings_file() -> str:
@@ -37,7 +55,7 @@ def mumble_database_file() -> str:
 
 
 def log_file() -> str:
-    return os.path.join(data_dir(), "nwnvoce.log")
+    return os.path.join(data_dir(), "voice.log")
 
 
 def resources_dir() -> str:

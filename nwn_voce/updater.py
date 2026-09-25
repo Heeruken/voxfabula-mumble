@@ -2,7 +2,7 @@
 
 All'avvio l'app chiede a GitHub qual e' l'ultima versione pubblicata. Se e' piu'
 nuova, CHIEDE all'utente; se accetta:
-  1. scarica l'installer della Release (NWN-Voce-Setup-<ver>.exe),
+  1. scarica l'installer della Release (VoxFabula-Voice-Setup-<ver>.exe),
   2. ne controlla l'impronta SHA-256 con quella calcolata da GitHub ("digest"),
   3. l'app si chiude e lancia l'installer in modalita' silenziosa, che
      sostituisce i file e la riapre gia' aggiornata.
@@ -46,7 +46,7 @@ ALLOWED_HOSTS = frozenset({
     "release-assets.githubusercontent.com",
     "objects.githubusercontent.com",
 })
-ASSET_RE = re.compile(r"^NWN-Voce-Setup-[\d.]+\.exe$", re.IGNORECASE)
+ASSET_RE = re.compile(r"^VoxFabula-Voice-Setup-[\d.]+\.exe$", re.IGNORECASE)
 MIN_RE = re.compile(r"(?im)^[ \t]*versione[ \t]+minima[ \t]*:[ \t]*v?([\d.]+)[ \t]*$")
 TIMEOUT = 15
 

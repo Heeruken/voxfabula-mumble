@@ -1,7 +1,7 @@
 """Le impostazioni del NOSTRO Mumble.
 
 L'app lancia il Mumble portatile incluso con:
-    mumble.exe -m -c "%APPDATA%\\NWN Voce\\mumble_settings.json"
+    mumble.exe -m -c "%APPDATA%\\Vox Fabula Voice\\mumble_settings.json"
   -c  = usa questo file di impostazioni invece di quello globale dell'utente
   -m  = puo' girare accanto a un altro Mumble gia' aperto
 Quindi il Mumble che l'utente usa per altro NON viene ne' chiuso ne' toccato.
