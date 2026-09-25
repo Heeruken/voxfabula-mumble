@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <!-- Cinzel/Inter da Google Fonts; senza rete si usano i fallback di style.css. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <button class="gear" onclick="openSettings()" title="Impostazioni" aria-label="Impostazioni">&#9881;</button>
+      <div class="langbar">
+        <button class="lang" data-lang="it" onclick="setLang('it')">IT</button>
+        <button class="lang" data-lang="en" onclick="setLang('en')">EN</button>
+      </div>
+      <div class="logo">NWN <span>Voce</span></div>
+      <div class="tag" data-i18n="tag"></div>
+    </header>
+
+    <div class="card">
+      <div class="field">
+        <label for="ip" data-i18n="label_ip"></label>
+        <input id="ip" type="text" autocomplete="off" spellcheck="false" data-ph="ph_ip" oninput="clearErr('ip')">
+        <div class="err" id="err-ip"></div>
+      </div>
+
+      <div class="field">
+        <label for="name" data-i18n="label_name"></label>
+        <input id="name" type="text" autocomplete="off" spellcheck="false" data-ph="ph_name" oninput="clearErr('name')">
+        <div class="err" id="err-name"></div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-go" class="btn btn-start" onclick="go()" data-i18n="btn_connect"></button>
+        <button id="btn-stop" class="btn btn-stop" onclick="stopIt()" disabled data-i18n="btn_stop"></button>
+      </div>
+    </div>
+
+    <div id="ready" class="ready" style="display:none"></div>
+
+    <div class="log-wrap">
+      <div class="log-title" data-i18n="status_title"></div>
+      <div id="log" class="log"></div>
+    </div>
+
+    <footer><span data-i18n="footer"></span> <span id="ver"></span></footer>
+
+    <div id="settings-view" class="settings-view" style="display:none">
+      <div class="card">
+        <div class="settings-title" data-i18n="settings_title"></div>
+        <div class="field">
+          <label for="set-name" data-i18n="set_name"></label>
+          <input id="set-name" type="text" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="set-input" data-i18n="set_mic"></label>
+          <select id="set-input"></select>
+        </div>
+        <div class="field">
+          <label for="set-output" data-i18n="set_spk"></label>
+          <select id="set-output"></select>
+        </div>
+        <div class="set-note" data-i18n="set_note"></div>
+        <div class="actions">
+          <button class="btn btn-start" onclick="saveSettings()" data-i18n="set_save"></button>
+          <button class="btn btn-stop" onclick="closeSettings()" data-i18n="set_back"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const I18N = {
+      it: {
+        tag: "voce di prossimità per Neverwinter Nights",
+        label_ip: "Indirizzo del server", ph_ip: "IP o nome, es. play.mioserver.it",
+        label_name: "Il tuo nome (uguale al nome account NWN)", ph_name: "es. Hiruken",
+        btn_connect: "Connetti", btn_stop: "Ferma",
+        status_title: "Stato",
+        footer: "Apri NWN a parte ed entra nel server.",
+        err_ip: "Indirizzo del server non valido.", err_name: "Scrivi il tuo nome.",
+        client_start: "Connessione a {host} come {name}…",
+        mumble_missing: "Manca Mumble nel pacchetto: reinstalla NWN Voce.",
+        config_ok: "Mumble preparato (impostazioni separate da qualsiasi altro Mumble).",
+        config_err: "Non riesco a preparare Mumble: {err}",
+        mumble_launched: "Mumble avviato e collegato a {host} (icona nella barra in basso).",
+        ready_client: "Pronto. Apri NWN ed entra nel server: la voce si attiva quando sei in gioco.",
+        relay_ok: "Collegato al server delle posizioni.",
+        relay_unreachable: "Il server delle posizioni ({host}:{port}) non risponde. Controlla l'indirizzo o che il server sia acceso.",
+        relay_rejected: "Il server ha rifiutato la connessione: {err}",
+        connecting: "In attesa del tuo personaggio… entra in gioco.",
+        live: "Voce di prossimità ATTIVA.",
+        mumble_closed: "Mumble è stato chiuso. Premi Ferma e poi Connetti per riaprirlo.",
+        bridge_error: "La voce si è fermata per un errore ({err}). Premi Ferma e riprova.",
+        stopped: "Tutto fermato.",
+        need_name: "Scrivi il tuo nome.", need_ip: "Scrivi l'indirizzo del server.",
+        fatal: "Errore: {err}",
+        settings_title: "Impostazioni",
+        set_name: "Nome (nome account NWN)",
+        set_mic: "Microfono", set_spk: "Casse / cuffie",
+        set_default: "Predefinito di Windows",
+        set_note: "Microfono e casse valgono dal prossimo Connetti.",
+        set_save: "Salva", set_back: "Indietro"
+      },
+      en: {
+        tag: "proximity voice for Neverwinter Nights",
+        label_ip: "Server address", ph_ip: "IP or name, e.g. play.myserver.com",
+        label_name: "Your name (same as your NWN account name)", ph_name: "e.g. Hiruken",
+        btn_connect: "Connect", btn_stop: "Stop",
+        status_title: "Status",
+        footer: "Open NWN separately and join the server.",
+        err_ip: "Invalid server address.", err_name: "Enter your name.",
+        client_start: "Connecting to {host} as {name}…",
+        mumble_missing: "Mumble is missing from the package: reinstall NWN Voce.",
+        config_ok: "Mumble ready (settings kept apart from any other Mumble).",
+        config_err: "Could not set up Mumble: {err}",
+        mumble_launched: "Mumble started and connected to {host} (icon in the taskbar).",
+        ready_client: "Ready. Open NWN and join the server: voice goes live once you're in-game.",
+        relay_ok: "Connected to the position server.",
+        relay_unreachable: "The position server ({host}:{port}) is not answering. Check the address or that the server is up.",
+        relay_rejected: "The server refused the connection: {err}",
+        connecting: "Waiting for your character… enter the game.",
+        live: "Proximity voice LIVE.",
+        mumble_closed: "Mumble was closed. Press Stop, then Connect to reopen it.",
+        bridge_error: "Voice stopped because of an error ({err}). Press Stop and try again.",
+        stopped: "Everything stopped.",
+        need_name: "Enter your name.", need_ip: "Enter the server address.",
+        fatal: "Error: {err}",
+        settings_title: "Settings",
+        set_name: "Name (NWN account name)",
+        set_mic: "Microphone", set_spk: "Speakers / headphones",
+        set_default: "Windows default",
+        set_note: "Microphone and speakers apply from the next Connect.",
+        set_save: "Save", set_back: "Back"
+      }
+    };
+    const WARN = ["mumble_missing", "config_err", "relay_unreachable", "relay_rejected",
+                  "mumble_closed", "bridge_error", "fatal"];
+
+    let lang = "it";
+    let running = false;
+
+    function tr(key, data) {
+      let s = (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key;
+      if (data) for (const k in data) s = s.split("{" + k + "}").join(data[k]);
+      return s;
+    }
+
+    function applyI18n() {
+      document.documentElement.lang = lang;
+      document.querySelectorAll("[data-i18n]").forEach(function (el) { el.textContent = tr(el.getAttribute("data-i18n")); });
+      document.querySelectorAll("[data-ph]").forEach(function (el) { el.setAttribute("placeholder", tr(el.getAttribute("data-ph"))); });
+      document.querySelectorAll(".lang").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-lang") === lang); });
+    }
+
+    function setLang(l) {
+      lang = (l === "en") ? "en" : "it";
+      applyI18n();
+      try { window.pywebview.api.save_lang(lang); } catch (e) {}
+    }
+
+    function clearErr(id) {
+      const e = document.getElementById("err-" + id);
+      if (e) { e.textContent = ""; e.style.display = "none"; }
+      document.getElementById(id).classList.remove("bad");
+    }
+    function showErr(id, key) {
+      const e = document.getElementById("err-" + id);
+      e.textContent = tr(key); e.style.display = "block";
+      document.getElementById(id).classList.add("bad");
+    }
+
+    function validHost(v) {
+      v = v.trim();
+      if (!v) return false;
+      if (/^[\d.]+$/.test(v)) {
+        const p = v.split(".");
+        return p.length === 4 && p.every(function (n) { return n !== "" && +n >= 0 && +n <= 255; });
+      }
+      return /^[a-zA-Z0-9]([a-zA-Z0-9.\-]*[a-zA-Z0-9])?$/.test(v);
+    }
+
+    function addStatus(key, data) {
+      const log = document.getElementById("log");
+      const line = document.createElement("div");
+      line.className = "log-line" + (WARN.indexOf(key) >= 0 ? " warn" : "");
+      line.textContent = tr(key, data);
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+
+      if (key === "live") showReady(tr("live"));
+      if (key === "connecting" || key === "stopped" || WARN.indexOf(key) >= 0) hideReady();
+      if (key === "mumble_missing" || key === "config_err" || key === "fatal") setRunning(false);
+    }
+
+    function showReady(msg) { const r = document.getElementById("ready"); r.textContent = "✓ " + msg; r.style.display = "block"; }
+    function hideReady() { document.getElementById("ready").style.display = "none"; }
+
+    function setRunning(r) {
+      running = r;
+      document.getElementById("btn-go").disabled = r;
+      document.getElementById("btn-stop").disabled = !r;
+      document.getElementById("ip").disabled = r;
+      document.getElementById("name").disabled = r;
+    }
+
+    async function go() {
+      const name = document.getElementById("name").value.trim();
+      const ip = document.getElementById("ip").value.trim();
+      let bad = false;
+      if (!validHost(ip)) { showErr("ip", "err_ip"); bad = true; }
+      if (!name) { showErr("name", "err_name"); bad = true; }
+      if (bad) return;
+      document.getElementById("log").innerHTML = "";
+      hideReady();
+      setRunning(true);
+      let res;
+      try { res = await window.pywebview.api.start(ip, name); } catch (e) { res = { ok: false }; }
+      if (!res || !res.ok) setRunning(false);
+    }
+
+    async function stopIt() {
+      try { await window.pywebview.api.stop(); } catch (e) {}
+      setRunning(false);
+    }
+
+    function openSettings() {
+      document.getElementById("set-name").value = document.getElementById("name").value;
+      loadDevices();
+      document.getElementById("settings-view").style.display = "";
+    }
+    function closeSettings() { document.getElementById("settings-view").style.display = "none"; }
+
+    function fillSelect(id, items, selected) {
+      const el = document.getElementById(id);
+      el.innerHTML = "";
+      const def = document.createElement("option");
+      def.value = ""; def.textContent = tr("set_default");
+      el.appendChild(def);
+      (items || []).forEach(function (d) {
+        const o = document.createElement("option");
+        o.value = d.id; o.textContent = d.label || d.name;
+        if (d.id === selected) o.selected = true;
+        el.appendChild(o);
+      });
+    }
+    async function loadDevices() {
+      let dev = { input: [], output: [] }, s = {};
+      try { dev = (await window.pywebview.api.get_audio_devices()) || dev; } catch (e) {}
+      try { s = (await window.pywebview.api.get_settings()) || {}; } catch (e) {}
+      fillSelect("set-input", dev.input, s.input_device);
+      fillSelect("set-output", dev.output, s.output_device);
+    }
+    async function saveSettings() {
+      const name = document.getElementById("set-name").value.trim();
+      const inp = document.getElementById("set-input").value;
+      const out = document.getElementById("set-output").value;
+      try { await window.pywebview.api.save_audio(name, inp, out); } catch (e) {}
+      if (name) document.getElementById("name").value = name;
+      closeSettings();
+    }
+
+    async function pollOnce() {
+      try {
+        const r = await window.pywebview.api.poll();
+        if (r && r.status) r.status.forEach(function (s) { addStatus(s.key, s.data); });
+      } catch (e) {}
+    }
+
+    async function init() {
+      let l = null;
+      try {
+        const s = await window.pywebview.api.get_settings();
+        if (s) {
+          if (s.name) document.getElementById("name").value = s.name;
+          if (s.host) document.getElementById("ip").value = s.host;
+          if (s.lang) l = s.lang;
+          if (s.version) document.getElementById("ver").textContent = "v" + s.version;
+        }
+      } catch (e) {}
+      if (!l) l = (navigator.language || "it").toLowerCase().indexOf("it") === 0 ? "it" : "en";
+      lang = (l === "en") ? "en" : "it";
+      applyI18n();
+      setInterval(pollOnce, 350);
+    }
+
+    document.addEventListener("DOMContentLoaded", applyI18n);
+    window.addEventListener("pywebviewready", init);
+  </script>
+</body>
+</html>

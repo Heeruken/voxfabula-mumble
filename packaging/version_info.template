@@ -1,0 +1,32 @@
+# Risorsa "Proprieta' > Dettagli" di NWN Voce.exe. {T} e {V} li riempie lo spec
+# con la versione di nwn_voce/__init__.py.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers={T},
+    prodvers={T},
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '041004B0',
+        [
+          StringStruct('CompanyName', 'VoxFabula'),
+          StringStruct('FileDescription', 'NWN Voce - voce di prossimita per Neverwinter Nights'),
+          StringStruct('FileVersion', '{V}'),
+          StringStruct('InternalName', 'NWN Voce'),
+          StringStruct('OriginalFilename', 'NWN Voce.exe'),
+          StringStruct('ProductName', 'NWN Voce'),
+          StringStruct('ProductVersion', '{V}'),
+          StringStruct('LegalCopyright', 'VoxFabula. Include Mumble (licenza BSD).')
+        ]
+      )
+    ]),
+    VarFileInfo([VarStruct('Translation', [1040, 1200])])
+  ]
+)
