@@ -6,7 +6,7 @@ posizione dei personaggi e la passa al plugin di portata vc_range.
 (Il pacchetto Python si chiama ancora nwn_voce: nome interno, non si vede.)
 """
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 APP_NAME = "Vox Fabula Voice"
 # nome delle versioni di prova precedenti: da li' recuperiamo le impostazioni
 OLD_APP_NAME = "NWN Voce"

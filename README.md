@@ -30,6 +30,7 @@ server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► Vox
 - Le posizioni le scrive il **server** (NWScript). Il client di gioco non viene toccato: niente lettura della memoria di NWN, quindi nessuna patch del gioco lo rompe.
 - L'audio posizionale nativo di Mumble è **spento**, perché ronza (bug Mumble #4169). Distanza, portata e pan stereo li fa tutti `vc_range`.
 - Il nostro Mumble parte con `mumble.exe -m -c "%APPDATA%\Vox Fabula Voice\mumble_settings.json"`: `-c` usa un file di impostazioni separato, `-m` permette di girare accanto a un altro Mumble.
+- Il giocatore non deve mai aprire Mumble. L'app ne scrive le impostazioni: push-to-talk (di base **Blocco Maiuscole**, si cambia dall'ingranaggio), niente controlli di aggiornamento di Mumble, niente procedure guidate. A ogni Connetti legge anche il certificato che il server presenta in quel momento e lo segna come accettato, così la domanda "accetti questo certificato?" non compare mai, nemmeno se il certificato del server cambia.
 
 | File | Cosa fa |
 |---|---|
@@ -92,7 +93,7 @@ All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-mumb
 
 1. Alza `__version__` in `nwn_voce/__init__.py` e lancia `packaging\build.ps1`.
 2. Su GitHub: **Releases → Draft a new release**. Tag `v<versione>` (per esempio `v1.2.1`), titolo, e nelle note cosa cambia, scritto per i giocatori.
-3. Trascina dentro `VoxFabula-Voice-Setup-<versione>.exe` e lo zip portatile, poi **Publish release**. Non spuntare "pre-release": le pre-release vengono ignorate, ed è un modo comodo per provare una versione senza mandarla a tutti.
+3. Trascina dentro `VoxFabula-Voice-Setup-<versione>.exe`, **`NWN-Voce-Setup-<versione>.exe`** (lo stesso file col nome vecchio: serve a chi ha ancora la 1.2.0, che cerca solo quel nome) e lo zip portatile, poi **Publish release**. Non spuntare "pre-release": le pre-release vengono ignorate, ed è un modo comodo per provare una versione senza mandarla a tutti.
 
 Da quel momento, chi apre l'app vede l'aggiornamento. GitHub permette 60 controlli l'ora per ogni rete: con un controllo per avvio si resta molto sotto.
 

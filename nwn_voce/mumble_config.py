@@ -166,13 +166,14 @@ def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
 # chiederebbe "Vuoi comunque accettare questo certificato?". Mumble ricorda i
 # certificati accettati nella tabella `cert` del suo database (host, porta,
 # impronta SHA-1 in esadecimale minuscolo): la pre-riempiamo con l'impronta del
-# NOSTRO server, cosi' la domanda non compare. Solo questa impronta: se un giorno
-# il server presentasse un certificato diverso, Mumble lo segnalerebbe comunque.
+# server, cosi' la domanda non compare.
 #
-# Se il certificato del server cambia (per esempio perche' il container di Mumble
-# viene ricreato senza i suoi dati), aggiornare questa impronta e pubblicare una
-# nuova versione. Impronta attuale: quella che Mumble mostra nella finestra
-# "Digest certificato server (SHA-1)", senza i due punti.
+# A ogni Connetti l'app chiede al server il certificato che presenta ADESSO
+# (fetch_server_digest) e registra quello: se il certificato cambia (container
+# di Mumble ricreato...) l'app si adegua da sola, senza nuove versioni. E' cio'
+# che farebbe il giocatore cliccando "Si'", solo senza chiederglielo.
+# Se il server non risponde, ripieghiamo sull'impronta nota qui sotto (quella
+# che Mumble mostra come "Digest certificato server (SHA-1)", senza i due punti).
 # ---------------------------------------------------------------------------
 SERVER_CERT_SHA1 = "64d902a09386aa3b7c013961ad7a747beed0fde5"
 
@@ -180,10 +181,30 @@ _CERT_TABLE = ("CREATE TABLE IF NOT EXISTS `cert` (`id` INTEGER PRIMARY KEY AUTO
                "`hostname` TEXT, `port` INTEGER, `digest` TEXT)")   # schema identico a Mumble 1.5
 
 
-def seed_server_cert(host: str, port: int = 64738, digest: str = SERVER_CERT_SHA1) -> bool:
-    """Fa riconoscere a Mumble il certificato del nostro server per ``host:port``.
-    Non tocca una scelta gia' presente per lo stesso host (anche se diversa).
-    True se ha aggiunto la voce."""
+def fetch_server_digest(host: str, port: int = 64738, timeout: float = 5.0) -> str | None:
+    """Impronta SHA-1 (esadecimale minuscolo, come la salva Mumble) del certificato
+    che il server Mumble presenta ora. None se non risponde."""
+    import socket
+    import ssl
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE        # e' auto-firmato: lo leggiamo, non lo verifichiamo
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as raw:
+            with ctx.wrap_socket(raw, server_hostname=host) as tls:
+                der = tls.getpeercert(binary_form=True)
+    except (OSError, ValueError) as exc:
+        log.info("certificato del server non letto (%s:%s): %s", host, port, exc)
+        return None
+    return hashlib.sha1(der).hexdigest() if der else None
+
+
+def seed_server_cert(host: str, port: int = 64738, digest: str = SERVER_CERT_SHA1,
+                     replace: bool = False) -> bool:
+    """Fa riconoscere a Mumble il certificato del server per ``host:port``.
+    replace=False: non tocca una voce gia' presente per lo stesso host.
+    replace=True: la sostituisce (impronta appena letta dal server).
+    True se ha scritto qualcosa."""
     import sqlite3
     db = paths.mumble_database_file()
     if not os.path.exists(db):
@@ -191,11 +212,25 @@ def seed_server_cert(host: str, port: int = 64738, digest: str = SERVER_CERT_SHA
     con = sqlite3.connect(db, timeout=5)
     try:
         con.execute(_CERT_TABLE)
-        if con.execute("SELECT 1 FROM cert WHERE hostname=? AND port=?", (host, port)).fetchone():
+        rows = con.execute("SELECT digest FROM cert WHERE hostname=? AND port=?", (host, port)).fetchall()
+        if rows and (not replace or rows == [(digest,)]):
             return False
+        con.execute("DELETE FROM cert WHERE hostname=? AND port=?", (host, port))
         con.execute("INSERT INTO cert (hostname, port, digest) VALUES (?,?,?)", (host, port, digest))
         con.commit()
-        log.info("certificato del server pre-accettato per %s:%s", host, port)
+        log.info("certificato del server %s per %s:%s (%s)",
+                 "aggiornato" if rows else "pre-accettato", host, port, digest)
         return True
     finally:
         con.close()
+
+
+def accept_server_cert(host: str, port: int = 64738) -> str:
+    """Quello che fa Connetti: impronta letta dal server se risponde, altrimenti
+    quella nota. Ritorna "live" o "known"."""
+    digest = fetch_server_digest(host, port)
+    if digest:
+        seed_server_cert(host, port, digest, replace=True)
+        return "live"
+    seed_server_cert(host, port)
+    return "known"

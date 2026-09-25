@@ -42,6 +42,10 @@ $iscc = @(
 if ($iscc) {
     & $iscc /Q "/DMyAppVersion=$version" 'packaging\installer.iss'
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup fallito." }
+    # Lo STESSO installer anche col nome di prima: la 1.2.0 pubblicata (quando
+    # l'app si chiamava "NWN Voce") cerca nella Release solo NWN-Voce-Setup-*.exe.
+    # Va caricato finche' qualcuno puo' avere ancora la 1.2.0.
+    Copy-Item "dist\VoxFabula-Voice-Setup-$version.exe" "dist\NWN-Voce-Setup-$version.exe"
 } else {
     Write-Warning "Inno Setup 6 non trovato: niente installer, solo lo zip."
 }

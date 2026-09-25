@@ -23,7 +23,7 @@ from typing import Callable, Optional
 from urllib.parse import quote
 
 from . import bridge, paths, settings, winproc
-from .mumble_config import seed_server_cert, write_config
+from .mumble_config import accept_server_cert, write_config
 from .relay_client import RelayClient
 
 log = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class Engine:
             self.emit("config_ok")
             self._stash_crash_dump()
             try:
-                seed_server_cert(host, MUMBLE_PORT)
+                accept_server_cert(host, MUMBLE_PORT)
             except Exception:  # noqa: BLE001 -- nel peggiore dei casi Mumble chiede lui
                 log.exception("pre-accettazione del certificato non riuscita")
 
