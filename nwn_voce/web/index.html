@@ -73,6 +73,21 @@
           <label for="set-output" data-i18n="set_spk"></label>
           <select id="set-output"></select>
         </div>
+        <div class="field">
+          <label for="set-transmit" data-i18n="set_transmit"></label>
+          <select id="set-transmit" onchange="renderVoice()">
+            <option value="ptt" data-i18n="tx_ptt"></option>
+            <option value="vad" data-i18n="tx_vad"></option>
+          </select>
+        </div>
+        <div class="field" id="row-ptt">
+          <label data-i18n="set_ptt_key"></label>
+          <div class="keyrow">
+            <span id="ptt-label" class="keycap"></span>
+            <button type="button" class="btn-small" id="ptt-change" onclick="captureKey()" data-i18n="set_ptt_change"></button>
+          </div>
+          <div class="set-hint" id="ptt-hint"></div>
+        </div>
         <div class="set-note" data-i18n="set_note"></div>
         <div class="actions">
           <button class="btn btn-start" onclick="saveSettings()" data-i18n="set_save"></button>
@@ -112,8 +127,18 @@
         set_name: "Nome (nome account NWN)",
         set_mic: "Microfono", set_spk: "Casse / cuffie",
         set_default: "Predefinito di Windows",
-        set_note: "Microfono e casse valgono dal prossimo Connetti.",
+        set_note: "Le impostazioni valgono dal prossimo Connetti.",
         set_save: "Salva", set_back: "Indietro",
+        set_transmit: "Come parli",
+        tx_ptt: "Premi per parlare (tieni premuto un tasto)",
+        tx_vad: "Attivazione vocale (parli e basta)",
+        set_ptt_key: "Tasto per parlare", set_ptt_change: "Cambia",
+        ptt_press: "Premi il tasto che vuoi, o un tasto laterale del mouse. Esc per annullare.",
+        ptt_unsupported: "Questo tasto non si può usare: scegline un altro.",
+        k_CapsLock: "Blocco Maiuscole", k_Space: "Spazio", k_ShiftLeft: "Maiusc sinistro",
+        k_ShiftRight: "Maiusc destro", k_ControlLeft: "Ctrl sinistro", k_AltLeft: "Alt sinistro",
+        k_Enter: "Invio", k_Backquote: "Tasto sotto Esc", k_numpad: "Tastierino {n}",
+        k_mouse3: "Mouse: tasto laterale indietro", k_mouse4: "Mouse: tasto laterale avanti",
         upd_title: "Disponibile la versione {version}",
         upd_title_required: "Per collegarti devi aggiornare alla versione {version}",
         upd_go: "Aggiorna", upd_go_page: "Scarica", upd_later: "Più tardi",
@@ -151,8 +176,18 @@
         set_name: "Name (NWN account name)",
         set_mic: "Microphone", set_spk: "Speakers / headphones",
         set_default: "Windows default",
-        set_note: "Microphone and speakers apply from the next Connect.",
+        set_note: "Settings apply from the next Connect.",
         set_save: "Save", set_back: "Back",
+        set_transmit: "How you talk",
+        tx_ptt: "Push to talk (hold a key)",
+        tx_vad: "Voice activation (just talk)",
+        set_ptt_key: "Push-to-talk key", set_ptt_change: "Change",
+        ptt_press: "Press the key you want, or a mouse side button. Esc to cancel.",
+        ptt_unsupported: "This key can't be used: pick another one.",
+        k_CapsLock: "Caps Lock", k_Space: "Space", k_ShiftLeft: "Left Shift",
+        k_ShiftRight: "Right Shift", k_ControlLeft: "Left Ctrl", k_AltLeft: "Left Alt",
+        k_Enter: "Enter", k_Backquote: "Key below Esc", k_numpad: "Numpad {n}",
+        k_mouse3: "Mouse: back side button", k_mouse4: "Mouse: forward side button",
         upd_title: "Version {version} is available",
         upd_title_required: "Update to version {version} to connect",
         upd_go: "Update", upd_go_page: "Download", upd_later: "Later",
@@ -217,6 +252,7 @@
       document.querySelectorAll("[data-ph]").forEach(function (el) { el.setAttribute("placeholder", tr(el.getAttribute("data-ph"))); });
       document.querySelectorAll(".lang").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-lang") === lang); });
       renderUpdate();
+      renderVoice();
     }
 
     function setLang(l) {
@@ -291,12 +327,77 @@
       setRunning(false);
     }
 
+    /* ---- push-to-talk (tasti uguali a nwn_voce/mumble_keys.py: il Python ricontrolla) ---- */
+    const PTT_CODES = new Set([].concat(
+      ["Digit1","Digit2","Digit3","Digit4","Digit5","Digit6","Digit7","Digit8","Digit9","Digit0",
+       "Minus","Equal","Backspace","Tab","BracketLeft","BracketRight","Enter","ControlLeft",
+       "Semicolon","Quote","Backquote","ShiftLeft","Backslash","Comma","Period","Slash","ShiftRight",
+       "NumpadMultiply","AltLeft","Space","CapsLock","NumLock","ScrollLock","NumpadSubtract",
+       "NumpadAdd","NumpadDecimal","IntlBackslash"],
+      "QWERTYUIOPASDFGHJKLZXCVBNM".split("").map(function (c) { return "Key" + c; }),
+      [1,2,3,4,5,6,7,8,9,10,11,12].map(function (n) { return "F" + n; }),
+      [0,1,2,3,4,5,6,7,8,9].map(function (n) { return "Numpad" + n; })));
+    const DEFAULT_KEY = { kind: "keyboard", code: "CapsLock" };
+    let pttKey = DEFAULT_KEY;
+    let capturing = false;
+
+    function keyLabel(k) {
+      if (!k) return "";
+      if (k.kind === "mouse") return tr("k_mouse" + k.button);
+      const c = k.code || "";
+      if (I18N.it["k_" + c]) return tr("k_" + c);
+      if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+      if (/^Digit\d$/.test(c)) return c.slice(5);
+      if (/^Numpad\d$/.test(c)) return tr("k_numpad", { n: c.slice(6) });
+      return c;
+    }
+    function renderVoice() {
+      const vad = document.getElementById("set-transmit").value === "vad";
+      document.getElementById("row-ptt").style.display = vad ? "none" : "";
+      const lab = document.getElementById("ptt-label");
+      lab.textContent = capturing ? "…" : keyLabel(pttKey);
+      lab.classList.toggle("listening", capturing);
+    }
+    function stopCapture(hint) {
+      capturing = false;
+      window.removeEventListener("keydown", onCaptureKey, true);
+      window.removeEventListener("mousedown", onCaptureMouse, true);
+      document.getElementById("ptt-hint").textContent = hint || "";
+      renderVoice();
+    }
+    function onCaptureKey(e) {
+      e.preventDefault(); e.stopPropagation();
+      if (e.code === "Escape") { stopCapture(""); return; }
+      if (!PTT_CODES.has(e.code)) { document.getElementById("ptt-hint").textContent = tr("ptt_unsupported"); return; }
+      pttKey = { kind: "keyboard", code: e.code };
+      stopCapture("");
+    }
+    function onCaptureMouse(e) {
+      if (e.button !== 3 && e.button !== 4) return;      // solo i tasti laterali
+      e.preventDefault(); e.stopPropagation();
+      pttKey = { kind: "mouse", button: e.button };
+      stopCapture("");
+    }
+    // i tasti laterali del mouse non devono far "tornare indietro" la finestra
+    window.addEventListener("mouseup", function (e) { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+    function captureKey() {
+      if (capturing) return;
+      capturing = true;
+      document.getElementById("ptt-hint").textContent = tr("ptt_press");
+      window.addEventListener("keydown", onCaptureKey, true);
+      window.addEventListener("mousedown", onCaptureMouse, true);
+      renderVoice();
+    }
+
     function openSettings() {
       document.getElementById("set-name").value = document.getElementById("name").value;
       loadDevices();
       document.getElementById("settings-view").style.display = "";
     }
-    function closeSettings() { document.getElementById("settings-view").style.display = "none"; }
+    function closeSettings() {
+      if (capturing) stopCapture("");
+      document.getElementById("settings-view").style.display = "none";
+    }
 
     function fillSelect(id, items, selected) {
       const el = document.getElementById(id);
@@ -317,12 +418,18 @@
       try { s = (await window.pywebview.api.get_settings()) || {}; } catch (e) {}
       fillSelect("set-input", dev.input, s.input_device);
       fillSelect("set-output", dev.output, s.output_device);
+      document.getElementById("set-transmit").value = s.transmit === "vad" ? "vad" : "ptt";
+      pttKey = s.ptt_key || DEFAULT_KEY;
+      document.getElementById("ptt-hint").textContent = "";
+      renderVoice();
     }
     async function saveSettings() {
       const name = document.getElementById("set-name").value.trim();
       const inp = document.getElementById("set-input").value;
       const out = document.getElementById("set-output").value;
+      const tx = document.getElementById("set-transmit").value;
       try { await window.pywebview.api.save_audio(name, inp, out); } catch (e) {}
+      try { await window.pywebview.api.save_voice(tx, pttKey); } catch (e) {}
       if (name) document.getElementById("name").value = name;
       closeSettings();
     }

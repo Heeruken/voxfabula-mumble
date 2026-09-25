@@ -96,3 +96,13 @@ select option { background: #15110b; color: #f1e6c8; }
 .update-notes:empty { display: none; }
 .update-progress { font-size: 12.5px; color: #e9c66a; margin-bottom: 10px; }
 .update-progress:empty { display: none; }
+
+/* tasto per parlare */
+.keyrow { display: flex; gap: 10px; align-items: stretch; }
+.keycap { flex: 1; padding: 11px 12px; font-size: 14px; font-weight: 600; color: #f3dd9e;
+  background: rgba(0,0,0,0.5); border: 1px solid rgba(201,162,39,0.32); border-radius: 9px; }
+.keycap.listening { border-color: #e9c66a; box-shadow: 0 0 0 2px rgba(233,198,106,0.22); }
+.btn-small { padding: 0 16px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer;
+  color: #211a08; background: linear-gradient(180deg, #f3dd9e, #c9a227); border: none; border-radius: 9px; }
+.btn-small:focus-visible, .btn:focus-visible { outline: 2px solid #e9c66a; outline-offset: 2px; }
+.set-hint { font-size: 12px; color: #e9c66a; margin-top: 6px; min-height: 1em; }

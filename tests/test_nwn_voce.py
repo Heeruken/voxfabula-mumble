@@ -208,6 +208,63 @@ class TempAppData(unittest.TestCase):
         self._tmp.cleanup()
 
 
+class TestPushToTalk(TempAppData):
+    # scritti da Mumble stesso (test dal vivo del 25/09)
+    MUMBLE_CAPSLOCK = "AAAEAAAAAAAOSW5wdXRLZXlib2FyZAAAADo="
+    MUMBLE_MOUSE5 = "AAAEAAAAAAALSW5wdXRNb3VzZQAAAAAF"
+
+    def test_encoding_matches_what_mumble_writes(self):
+        from nwn_voce import mumble_keys
+        self.assertEqual(mumble_keys.encode({"kind": "keyboard", "code": "CapsLock"}),
+                         (self.MUMBLE_CAPSLOCK, True))
+        self.assertEqual(mumble_keys.encode({"kind": "mouse", "button": 4}), (self.MUMBLE_MOUSE5, False))
+        self.assertEqual(mumble_keys.KEYBOARD_SCANCODES["KeyV"], 0x2F)
+        self.assertEqual(mumble_keys.KEYBOARD_SCANCODES["Space"], 0x39)
+        self.assertEqual(mumble_keys.KEYBOARD_SCANCODES["F12"], 0x58)
+        self.assertFalse(mumble_keys.encode({"kind": "keyboard", "code": "KeyV"})[1],
+                         "le lettere non vanno 'mangiate': non si potrebbero piu' scrivere")
+        with self.assertRaises(ValueError):
+            mumble_keys.encode({"kind": "keyboard", "code": "ArrowUp"})
+
+    def test_config_default_is_capslock_ptt(self):
+        from nwn_voce import mumble_config
+        mdir = os.path.join(self._tmp.name, "mumble")
+        os.makedirs(os.path.join(mdir, "plugins"))
+        d = _read(mumble_config.write_config(mdir))
+        self.assertEqual(d["audio"]["transmit_mode"], "PTT")
+        ptt = [s for s in d["shortcuts"]["defined"] if s["index"] == 1]
+        self.assertEqual(ptt, [{"buttons": [self.MUMBLE_CAPSLOCK], "data": "AAAAAAE=",
+                                "index": 1, "suppress": True}])
+
+    def test_config_vad_and_key_change(self):
+        from nwn_voce import mumble_config
+        mdir = os.path.join(self._tmp.name, "mumble")
+        os.makedirs(os.path.join(mdir, "plugins"))
+        path = mumble_config.write_config(mdir)
+        d = _read(path)
+        d["shortcuts"]["defined"].append({"buttons": [], "data": "AAAAAAE=", "index": 7, "suppress": False})
+        _write(path, d)
+        d = _read(mumble_config.write_config(mdir, transmit="vad", ptt_key={"kind": "mouse", "button": 4}))
+        self.assertEqual(d["audio"]["transmit_mode"], "VAD")
+        indexes = sorted(s["index"] for s in d["shortcuts"]["defined"])
+        self.assertEqual(indexes, [1, 7], "un solo push-to-talk, le altre scorciatoie restano")
+        d = _read(mumble_config.write_config(mdir, ptt_key={"kind": "keyboard", "code": "ArrowUp"}))
+        ptt = next(s for s in d["shortcuts"]["defined"] if s["index"] == 1)
+        self.assertEqual(ptt["buttons"], [self.MUMBLE_CAPSLOCK], "tasto non supportato -> predefinito")
+
+    def test_ui_key_list_matches_python(self):
+        import re
+        from nwn_voce import mumble_keys
+        html = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "nwn_voce", "web", "index.html"), encoding="utf-8").read()
+        block = html[html.index("const PTT_CODES"):html.index("const DEFAULT_KEY")]
+        js = set(re.findall(r'"([A-Za-z]+\d*)"', block))
+        js |= {"Key" + c for c in "QWERTYUIOPASDFGHJKLZXCVBNM"}
+        js |= {f"F{n}" for n in range(1, 13)} | {f"Numpad{n}" for n in range(10)}
+        js -= {"QWERTYUIOPASDFGHJKLZXCVBNM", "Key", "F", "Numpad"}   # pezzi di codice JS, non tasti
+        self.assertEqual(js, set(mumble_keys.KEYBOARD_SCANCODES))
+
+
 class TestServerCertificate(TempAppData):
     def rows(self):
         import sqlite3

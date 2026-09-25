@@ -44,9 +44,19 @@ def _load(path: str) -> dict:
         return {}
 
 
+PTT_SHORTCUT_INDEX = 1          # indice della funzione "Push-to-Talk" nelle scorciatoie di Mumble
+_EMPTY_DATA = "AAAAAAE="        # QVariant nullo: come lo scrive Mumble per il push-to-talk
+
+
 def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
-                 output_device: Optional[str] = None) -> str:
-    """Crea/aggiorna il file di impostazioni del nostro Mumble e ne ritorna il percorso."""
+                 output_device: Optional[str] = None,
+                 transmit: str = "ptt", ptt_key: Optional[dict] = None) -> str:
+    """Crea/aggiorna il file di impostazioni del nostro Mumble e ne ritorna il percorso.
+
+    transmit: "ptt" (premi per parlare, predefinito) o "vad" (attivazione vocale).
+    ptt_key:  tasto del push-to-talk (vedi mumble_keys); None = Blocco Maiuscole.
+    """
+    from . import mumble_keys
     path = paths.mumble_settings_file()
     data = _load(path)
 
@@ -92,6 +102,17 @@ def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
     audio = data.setdefault("audio", {})
     audio["mute"] = False
     audio["deaf"] = False
+
+    # Come si trasmette: il giocatore lo sceglie nell'app, mai dentro Mumble.
+    key = ptt_key if ptt_key and mumble_keys.is_supported(ptt_key) else mumble_keys.DEFAULT_KEY
+    button, suppress = mumble_keys.encode(key)
+    audio["transmit_mode"] = "VAD" if transmit == "vad" else "PTT"
+    shortcuts = data.setdefault("shortcuts", {})
+    defined = [s for s in shortcuts.get("defined", [])
+               if isinstance(s, dict) and s.get("index") != PTT_SHORTCUT_INDEX]
+    defined.append({"buttons": [button], "data": _EMPTY_DATA,
+                    "index": PTT_SHORTCUT_INDEX, "suppress": suppress})
+    shortcuts["defined"] = defined
     backend = data.setdefault("audio_backend", {})
     if input_device or output_device:
         audio["input_system"] = "WASAPI"

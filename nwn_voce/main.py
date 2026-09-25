@@ -94,6 +94,16 @@ class Api:
         settings.update(**kv)
         return {"ok": True}
 
+    def save_voice(self, transmit, key) -> dict:
+        """Modalita' ("ptt"/"vad") e tasto del push-to-talk scelti nell'app.
+        key = {"kind": "keyboard", "code": "CapsLock"} o {"kind": "mouse", "button": 3}."""
+        from . import mumble_keys
+        transmit = "vad" if transmit == "vad" else "ptt"
+        if not isinstance(key, dict) or not mumble_keys.is_supported(key):
+            return {"ok": False}
+        settings.update(transmit=transmit, ptt_key=key)
+        return {"ok": True}
+
     def save_lang(self, lang) -> bool:
         settings.update(lang=lang)
         return True

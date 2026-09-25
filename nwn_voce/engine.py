@@ -65,7 +65,9 @@ class Engine:
             s = settings.load()
             try:
                 cfg = write_config(mdir, input_device=s.get("input_device") or None,
-                                   output_device=s.get("output_device") or None)
+                                   output_device=s.get("output_device") or None,
+                                   transmit=s.get("transmit") or "ptt",
+                                   ptt_key=s.get("ptt_key"))
             except Exception as exc:  # noqa: BLE001
                 log.exception("configurazione Mumble fallita")
                 self.emit("config_err", err=str(exc))
