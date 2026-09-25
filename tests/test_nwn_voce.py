@@ -160,6 +160,23 @@ class TestMumbleConfig(unittest.TestCase):
                     os.environ["APPDATA"] = old
 
 
+class TestApiSurface(unittest.TestCase):
+    def test_only_methods_are_public(self):
+        """pywebview esplora ricorsivamente gli attributi PUBBLICI dell'Api: se ci
+        finisce la finestra, all'avvio si blocca tutto (pagina scollegata, chiusura
+        che non risponde). Pubblici devono essere solo i metodi per la pagina."""
+        from nwn_voce.main import Api
+        api = Api()
+        try:
+            for name in dir(api):
+                if name.startswith("_"):
+                    continue
+                self.assertTrue(callable(getattr(api, name)),
+                                f"attributo pubblico non-metodo: {name} (rinominalo _{name})")
+        finally:
+            api._engine.stop(quiet=True)
+
+
 class TestWinProc(unittest.TestCase):
     def test_finds_only_exact_image(self):
         pids = winproc.pids_for_image(sys.executable)

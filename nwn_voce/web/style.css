@@ -86,3 +86,13 @@ select { width: 100%; padding: 11px 12px; font-size: 14px; color: #f1e6c8; font-
   background: rgba(0,0,0,0.5); border: 1px solid rgba(201,162,39,0.32); border-radius: 9px; outline: none; cursor: pointer; }
 select:focus { border-color: #e9c66a; box-shadow: 0 0 0 2px rgba(233,198,106,0.15); }
 select option { background: #15110b; color: #f1e6c8; }
+
+/* riquadro "nuova versione disponibile" */
+.update { background: rgba(40,30,10,0.86); border: 1px solid #c9a227; border-radius: 14px; padding: 16px 18px;
+  margin-bottom: 16px; backdrop-filter: blur(6px); box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
+.update-title { font-family: 'Cinzel', serif; color: #f3dd9e; font-size: 16px; letter-spacing: 1px; margin-bottom: 8px; }
+.update-notes { font-size: 12.5px; line-height: 1.5; color: #d3c6a0; white-space: pre-wrap; max-height: 120px;
+  overflow-y: auto; margin-bottom: 10px; }
+.update-notes:empty { display: none; }
+.update-progress { font-size: 12.5px; color: #e9c66a; margin-bottom: 10px; }
+.update-progress:empty { display: none; }

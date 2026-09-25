@@ -5,5 +5,5 @@ impostazioni separate da qualsiasi altro Mumble sul PC), riceve dal server la
 posizione dei personaggi e la passa al plugin di portata vc_range.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 APP_NAME = "NWN Voce"

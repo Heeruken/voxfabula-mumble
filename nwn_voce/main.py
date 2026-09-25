@@ -12,7 +12,9 @@ import sys
 import threading
 import traceback
 
-from . import APP_NAME, __version__, paths, settings, winproc
+import webbrowser
+
+from . import APP_NAME, __version__, paths, settings, updater, winproc
 from .audio_devices import list_audio_devices
 from .engine import Engine
 
@@ -40,7 +42,14 @@ class Api:
         self._lock = threading.Lock()
         self._statuses: list = []
         self._devices = {"input": [], "output": []}
-        self.engine = Engine(emit=self._queue)
+        self._update: updater.Update | None = None
+        self._last_pct = -1
+        # NB: solo attributi con "_": pywebview espone alla pagina (ed esplora
+        # ricorsivamente) tutto cio' che e' pubblico. Esplorare la finestra dal suo
+        # stesso avvio la blocca: niente pagina collegata, niente chiusura.
+        self._pending_installer: str | None = None   # lanciato da main() dopo la chiusura
+        self._window = None
+        self._engine = Engine(emit=self._queue)
         threading.Thread(target=self._load_devices, daemon=True).start()
 
     def _load_devices(self) -> None:
@@ -89,7 +98,56 @@ class Api:
         settings.update(lang=lang)
         return True
 
+    # ---- aggiornamenti ----
+    def check_update(self) -> bool:
+        def work():
+            upd = updater.check()
+            if upd is None:
+                return
+            with self._lock:
+                self._update = upd
+            self._queue("update_available", version=upd.version, notes=upd.notes,
+                        mandatory=upd.mandatory, auto=updater.is_installed())
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def update_now(self) -> dict:
+        with self._lock:
+            upd = self._update
+        if upd is None:
+            return {"ok": False}
+        if not updater.is_installed():
+            # zip portatile o sorgente: non possiamo sovrascriverci, apriamo la pagina
+            webbrowser.open(upd.page)
+            self._queue("update_page_opened")
+            return {"ok": True}
+
+        def progress(done, total):
+            pct = int(done * 100 / total) if total else 0
+            if pct >= self._last_pct + 5 or pct == 100:
+                self._last_pct = pct
+                self._queue("update_progress", pct=pct)
+
+        def work():
+            self._last_pct = -1
+            try:
+                path = updater.download(upd, progress=progress)
+            except updater.UpdateError as exc:
+                self._queue("update_failed", err=str(exc))
+                return
+            self._pending_installer = path
+            self._queue("update_ready")
+            if self._window is not None:
+                self._window.destroy()     # main() poi ferma tutto e lancia l'installer
+        threading.Thread(target=work, daemon=True).start()
+        return {"ok": True}
+
     def start(self, host, name) -> dict:
+        with self._lock:
+            upd = self._update
+        if upd is not None and upd.mandatory:
+            self._queue("update_required", version=upd.version)
+            return {"ok": False}
         host, name = (host or "").strip(), (name or "").strip()
         if not host:
             self._queue("need_ip")
@@ -98,11 +156,11 @@ class Api:
             self._queue("need_name")
             return {"ok": False}
         settings.update(host=host, name=name)
-        self._spawn(self.engine.start, host, name)
+        self._spawn(self._engine.start, host, name)
         return {"ok": True}
 
     def stop(self) -> dict:
-        self._spawn(self.engine.stop)
+        self._spawn(self._engine.stop)
         return {"ok": True}
 
 
@@ -116,12 +174,14 @@ def main() -> None:
     import webview  # dopo il controllo istanza: avvio piu' rapido se gia' aperto
 
     api = Api()
-    webview.create_window(APP_NAME, paths.web_index(), js_api=api,
-                          width=560, height=780, min_size=(460, 640),
-                          background_color="#12100c")
+    api._window = webview.create_window(APP_NAME, paths.web_index(), js_api=api,
+                                       width=560, height=780, min_size=(460, 640),
+                                       background_color="#12100c")
     webview.start()
     # finestra chiusa: fermiamo ponte e Mumble prima di uscire
-    api.engine.stop(quiet=True)
+    api._engine.stop(quiet=True)
+    if api._pending_installer:
+        updater.launch_installer(api._pending_installer)
     log.info("chiuso")
 
 

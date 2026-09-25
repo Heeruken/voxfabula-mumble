@@ -59,4 +59,7 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+; installazione normale: casella "Avvia NWN Voce" alla fine
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+; aggiornamento dall'app (installer lanciato con /SILENT): riapre l'app da solo
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: WizardSilent

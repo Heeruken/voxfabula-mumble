@@ -15,7 +15,7 @@ Write-Host "NWN Voce $version" -ForegroundColor Cyan
 
 # 1) i test devono passare: niente build di una versione rotta
 Write-Host "Test..." -ForegroundColor Cyan
-python -m unittest -q tests.test_nwn_voce
+python -m unittest -q tests.test_nwn_voce tests.test_updater
 if ($LASTEXITCODE -ne 0) { throw "Test falliti: build annullata." }
 
 # 2) Mumble portatile + plugin fresco

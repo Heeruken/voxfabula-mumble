@@ -58,6 +58,22 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 
 **Plugin**: `plugin\build.bat` lo ricompila con Visual Studio 2022. La `vc_range.dll` compilata è versionata, e la build la copia in `vendor\mumble\plugins\`.
 
+## Aggiornamento automatico
+
+All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/nwn-voce`. Se è più nuova, mostra un riquadro con le note della versione e i pulsanti **Aggiorna / Più tardi**. Se l'utente accetta, l'app scarica `NWN-Voce-Setup-<ver>.exe`, ne verifica l'impronta SHA-256 (quella che GitHub calcola da solo per ogni file), si chiude e lancia l'installer in modalità silenziosa. L'installer sostituisce i file e la riapre.
+
+- Si scarica solo via HTTPS e solo da domini GitHub, controllati anche dopo i redirect. Una Release senza impronta viene ignorata; un file che non corrisponde viene buttato.
+- Chi usa lo **zip portatile** non si aggiorna da solo: il pulsante apre la pagina della versione nel browser.
+- **Versione minima**: se nelle note della Release c'è la riga `Versione minima: 1.2.0`, le app più vecchie mostrano l'aggiornamento come obbligatorio e non si collegano finché non aggiornano. Serve quando cambia il protocollo col relay. La riga non viene mostrata all'utente.
+
+### Pubblicare una versione
+
+1. Alza `__version__` in `nwn_voce/__init__.py` e lancia `packaging\build.ps1`.
+2. Su GitHub: **Releases → Draft a new release**. Tag `v<versione>` (per esempio `v1.2.1`), titolo, e nelle note cosa cambia, scritto per i giocatori.
+3. Trascina dentro `NWN-Voce-Setup-<versione>.exe` e lo zip portatile, poi **Publish release**. Non spuntare "pre-release": le pre-release vengono ignorate, ed è un modo comodo per provare una versione senza mandarla a tutti.
+
+Da quel momento, chi apre l'app vede l'aggiornamento. GitHub permette 60 controlli l'ora per ogni rete: con un controllo per avvio si resta molto sotto.
+
 ## Firma e SmartScreen, senza spendere
 
 Senza certificato l'avviso "editore sconosciuto" resta. Le cose gratuite che lo riducono:

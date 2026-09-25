@@ -20,6 +20,16 @@
       <div class="tag" data-i18n="tag"></div>
     </header>
 
+    <div id="update" class="update" style="display:none">
+      <div class="update-title" id="upd-title"></div>
+      <div class="update-notes" id="upd-notes"></div>
+      <div class="update-progress" id="upd-progress"></div>
+      <div class="actions">
+        <button id="upd-go" class="btn btn-start" onclick="updateNow()"></button>
+        <button id="upd-later" class="btn btn-stop" onclick="updateLater()" data-i18n="upd_later"></button>
+      </div>
+    </div>
+
     <div class="card">
       <div class="field">
         <label for="ip" data-i18n="label_ip"></label>
@@ -103,7 +113,15 @@
         set_mic: "Microfono", set_spk: "Casse / cuffie",
         set_default: "Predefinito di Windows",
         set_note: "Microfono e casse valgono dal prossimo Connetti.",
-        set_save: "Salva", set_back: "Indietro"
+        set_save: "Salva", set_back: "Indietro",
+        upd_title: "Disponibile la versione {version}",
+        upd_title_required: "Per collegarti devi aggiornare alla versione {version}",
+        upd_go: "Aggiorna", upd_go_page: "Scarica", upd_later: "Più tardi",
+        update_progress: "Scaricamento… {pct}%",
+        update_ready: "Aggiornamento verificato: NWN Voce si riapre da sola tra un attimo.",
+        update_failed: "Aggiornamento non riuscito: {err}",
+        update_page_opened: "Ho aperto nel browser la pagina della nuova versione.",
+        update_required: "Prima di collegarti devi aggiornare alla versione {version}."
       },
       en: {
         tag: "proximity voice for Neverwinter Nights",
@@ -134,14 +152,58 @@
         set_mic: "Microphone", set_spk: "Speakers / headphones",
         set_default: "Windows default",
         set_note: "Microphone and speakers apply from the next Connect.",
-        set_save: "Save", set_back: "Back"
+        set_save: "Save", set_back: "Back",
+        upd_title: "Version {version} is available",
+        upd_title_required: "Update to version {version} to connect",
+        upd_go: "Update", upd_go_page: "Download", upd_later: "Later",
+        update_progress: "Downloading… {pct}%",
+        update_ready: "Update verified: NWN Voce will reopen in a moment.",
+        update_failed: "Update failed: {err}",
+        update_page_opened: "Opened the new version's page in your browser.",
+        update_required: "Update to version {version} before connecting."
       }
     };
     const WARN = ["mumble_missing", "config_err", "relay_unreachable", "relay_rejected",
-                  "mumble_closed", "bridge_error", "fatal"];
+                  "mumble_closed", "bridge_error", "fatal", "update_required"];
 
     let lang = "it";
     let running = false;
+    let upd = null;          // aggiornamento disponibile {version, notes, mandatory, auto}
+
+    /* ---- aggiornamento ---- */
+    function renderUpdate() {
+      if (!upd) return;
+      document.getElementById("upd-title").textContent =
+        tr(upd.mandatory ? "upd_title_required" : "upd_title", { version: upd.version });
+      document.getElementById("upd-notes").textContent = upd.notes || "";
+      document.getElementById("upd-go").textContent = tr(upd.auto ? "upd_go" : "upd_go_page");
+      document.getElementById("upd-later").style.display = upd.mandatory ? "none" : "";
+      document.getElementById("btn-go").disabled = running || upd.mandatory;
+      document.getElementById("update").style.display = "";
+    }
+    function setUpdProgress(text) { document.getElementById("upd-progress").textContent = text; }
+    async function updateNow() {
+      document.getElementById("upd-go").disabled = true;
+      document.getElementById("upd-later").disabled = true;
+      try { await window.pywebview.api.update_now(); } catch (e) {}
+      if (upd && !upd.auto) {       // pagina aperta nel browser: riattiva i pulsanti
+        document.getElementById("upd-go").disabled = false;
+        document.getElementById("upd-later").disabled = false;
+      }
+    }
+    function updateLater() { document.getElementById("update").style.display = "none"; }
+    function handleUpdateStatus(key, data) {
+      if (key === "update_available") { upd = data; renderUpdate(); return true; }
+      if (key === "update_progress") { setUpdProgress(tr(key, data)); return true; }
+      if (key === "update_ready") { setUpdProgress(tr(key)); return true; }
+      if (key === "update_failed") {
+        setUpdProgress(tr(key, data));
+        document.getElementById("upd-go").disabled = false;
+        document.getElementById("upd-later").disabled = false;
+        return true;
+      }
+      return false;
+    }
 
     function tr(key, data) {
       let s = (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key;
@@ -154,6 +216,7 @@
       document.querySelectorAll("[data-i18n]").forEach(function (el) { el.textContent = tr(el.getAttribute("data-i18n")); });
       document.querySelectorAll("[data-ph]").forEach(function (el) { el.setAttribute("placeholder", tr(el.getAttribute("data-ph"))); });
       document.querySelectorAll(".lang").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-lang") === lang); });
+      renderUpdate();
     }
 
     function setLang(l) {
@@ -184,6 +247,7 @@
     }
 
     function addStatus(key, data) {
+      if (handleUpdateStatus(key, data)) return;
       const log = document.getElementById("log");
       const line = document.createElement("div");
       line.className = "log-line" + (WARN.indexOf(key) >= 0 ? " warn" : "");
@@ -201,7 +265,7 @@
 
     function setRunning(r) {
       running = r;
-      document.getElementById("btn-go").disabled = r;
+      document.getElementById("btn-go").disabled = r || !!(upd && upd.mandatory);
       document.getElementById("btn-stop").disabled = !r;
       document.getElementById("ip").disabled = r;
       document.getElementById("name").disabled = r;
@@ -285,6 +349,7 @@
       lang = (l === "en") ? "en" : "it";
       applyI18n();
       setInterval(pollOnce, 350);
+      try { window.pywebview.api.check_update(); } catch (e) {}
     }
 
     document.addEventListener("DOMContentLoaded", applyI18n);
