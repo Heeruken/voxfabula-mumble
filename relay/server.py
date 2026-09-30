@@ -74,19 +74,29 @@ class _TalkWriter:
         """Mappa il nick Mumble alla CD key NWN, in modo tollerante: il nick puo'
         differire dal nome account per maiuscole/minuscole e, soprattutto, per il
         suffisso numerico che Mumble aggiunge quando il nick e' gia' in uso
-        ('Hiruken' -> 'Hiruken2' per una sessione fantasma o un riconnesso)."""
-        q = ("SELECT cdkey FROM vc_positions "
-             "WHERE playername=? COLLATE NOCASE OR charname=? COLLATE NOCASE "
-             "ORDER BY seq DESC LIMIT 1")
-        row = self._conn.execute(q, (player, player)).fetchone()   # 1) esatto (case-insensitive)
-        if row and row[0]:
-            return row[0]
+        ('Hiruken' -> 'Hiruken2' per una sessione fantasma o un riconnesso).
+        Cerca anche tra i DM (vc_dm_pos): l'icona si accende pure sopra di loro."""
+        match = "WHERE playername=? COLLATE NOCASE OR charname=? COLLATE NOCASE"
+        q = (f"SELECT cdkey, seq FROM vc_positions {match} UNION ALL "
+             f"SELECT cdkey, seq FROM vc_dm_pos {match} ORDER BY seq DESC LIMIT 1")
+        try:
+            self._conn.execute("SELECT 1 FROM vc_dm_pos LIMIT 0")
+            both = True
+        except sqlite3.OperationalError:
+            # modulo vecchio senza vc_dm_pos: solo i giocatori
+            q = f"SELECT cdkey FROM vc_positions {match} ORDER BY seq DESC LIMIT 1"
+            both = False
+
+        def find(name):
+            args = (name, name, name, name) if both else (name, name)
+            row = self._conn.execute(q, args).fetchone()
+            return row[0] if row and row[0] else None
+
+        found = find(player)                                        # 1) esatto (case-insensitive)
         base = player.rstrip("0123456789")                         # 2) togli suffisso numerico Mumble
-        if base and base != player:
-            row = self._conn.execute(q, (base, base)).fetchone()
-            if row and row[0]:
-                return row[0]
-        return None
+        if not found and base and base != player:
+            found = find(base)
+        return found
 
     def set_talking(self, player: str, talking: bool) -> None:
         if not player:

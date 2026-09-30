@@ -11,6 +11,7 @@ Table schema (created by the NWScript side):
     CREATE TABLE vc_positions(
         cdkey TEXT PRIMARY KEY, playername TEXT, charname TEXT,
         area TEXT, x REAL, y REAL, z REAL, facing REAL, seq INTEGER);
+    CREATE TABLE vc_dm_pos(...)   -- stesse colonne, solo i DM (vedi _DM_COLS)
 """
 
 from __future__ import annotations
@@ -29,11 +30,57 @@ DEFAULT_DB_NAME = "nwn_voice"
 # dell'ascoltatore (vedi vc_range.c). Nessuna area di gioco usa questo resref.
 PRIV_MUTE_AREA = "\x01vc_priv_mute"
 
+# Una riga ferma da cosi' tanto e' un fantasma. Lo script cancella le righe all'uscita e
+# al caricamento del modulo: una riga ferma e' quasi sempre un giocatore in una schermata
+# di caricamento, e va tenuto dov'era (se sparisse dal roster lo sentirebbero tutti a
+# volume pieno, e lui sentirebbe tutti).
+ROSTER_STALE_AFTER = 30.0
+
+# I DM (vc_voice.nss li scrive in vc_dm_pos, NON in vc_positions) sono voci come quelle
+# dei giocatori (portata sussurra/parla/urla, dal loro avatar o dal PNG che possiedono),
+# con due eccezioni che decide il relay per ogni ascoltatore:
+#  - EMERGENZA (range_mode = EMERGENCY_MODE): fuori dal roster degli altri -> il plugin
+#    lo lascia a volume pieno: lo sentono tutti, ovunque;
+#  - "Isola" attiva: i NON selezionati lo ricevono in un'area fasulla (muto), i selezionati
+#    e gli altri DM non lo ricevono affatto (volume pieno).
+EMERGENCY_MODE = 3
+_DM_COLS = "cdkey, playername, charname, area, x, y, z, facing, range_mode, seq"
+_POS_COLS = "cdkey, playername, charname, area, x, y, z, facing, seq"   # poll(): senza range_mode
+
 
 def default_db_path(db_name: str = DEFAULT_DB_NAME) -> str:
     base = os.path.join(os.path.expanduser("~"), "Documents",
                         "Neverwinter Nights", "database")
     return os.path.join(base, f"{db_name}.sqlite3")
+
+
+def _s(r, col: str) -> str:
+    """Colonna testo di una riga, "" se manca o e' NULL."""
+    return str(r[col]).strip() if col in r.keys() and r[col] is not None else ""
+
+
+def _names(r) -> list:
+    """Nome account e nome personaggio (senza doppioni): il plugin abbina il nome
+    Mumble all'uno o all'altro."""
+    names = []
+    for nm in (_s(r, "playername"), _s(r, "charname")):
+        if nm and nm.lower() not in [e.lower() for e in names]:
+            names.append(nm)
+    if not names and _s(r, "cdkey"):
+        names.append(_s(r, "cdkey"))
+    return names
+
+
+def _mode(r) -> int:
+    """Portata (0 sussurra, 1 parla, 2 urla, EMERGENCY_MODE); 1 se manca."""
+    return (int(r["range_mode"]) if "range_mode" in r.keys() and r["range_mode"] is not None
+            else 1)
+
+
+def _entries(r, mode: int) -> list:
+    """Voci del roster di una riga: la stessa posizione sotto ognuno dei suoi nomi."""
+    area, x, y, z = _s(r, "area"), float(r["x"]), float(r["y"]), float(r["z"])
+    return [(nm, area, x, y, z, mode) for nm in _names(r)]
 
 
 class SqlFileProvider:
@@ -42,17 +89,19 @@ class SqlFileProvider:
     def __init__(self, db_path: Optional[str] = None,
                  player: Optional[str] = None,
                  server: str = "localhost",
-                 stale_after: float = 2.0) -> None:
+                 stale_after: float = 2.0,
+                 roster_stale_after: float = ROSTER_STALE_AFTER) -> None:
         self.db_path = db_path or default_db_path()
         self.player = player          # match charname/playername/cdkey; None => most recent
         self.server = server
         self.stale_after = stale_after
+        self.roster_stale_after = roster_stale_after
         self._conn: Optional[sqlite3.Connection] = None
         self._last_seq: Optional[int] = None
         self._last_change = 0.0
         # Per-player freshness for the roster TTL (#2): key -> (last_seq, last_change).
-        # A row whose seq stops advancing for > stale_after is a ghost (player left
-        # / server restarted with stale rows) and is dropped from the roster.
+        # A row whose seq stops advancing for > roster_stale_after is a ghost (player
+        # left / server restarted with stale rows) and is dropped from the roster.
         self._roster_seen: dict = {}
 
     def open(self) -> None:
@@ -100,15 +149,22 @@ class SqlFileProvider:
 
     def _query_row(self):
         assert self._conn is not None
+        # Anche i DM hanno una posizione (vc_dm_pos): cosi' l'app del DM risulta "in
+        # gioco" e il pan stereo segue il suo sguardo.
         if self.player:
-            sql = ("SELECT * FROM vc_positions WHERE charname=? OR playername=? "
-                   "OR cdkey=? ORDER BY seq DESC LIMIT 1")
+            where = " WHERE charname=? OR playername=? OR cdkey=?"
             args = (self.player, self.player, self.player)
         else:
-            sql = "SELECT * FROM vc_positions ORDER BY seq DESC LIMIT 1"
-            args = ()
-        cur = self._conn.execute(sql, args)
-        return cur.fetchone()
+            where, args = "", ()
+        both = (f"SELECT {_POS_COLS} FROM vc_positions{where} UNION ALL "
+                f"SELECT {_POS_COLS} FROM vc_dm_pos{where} ORDER BY seq DESC LIMIT 1")
+        try:
+            return self._conn.execute(both, args + args).fetchone()
+        except sqlite3.OperationalError:
+            # vc_dm_pos non esiste ancora (modulo vecchio): solo i giocatori
+            return self._conn.execute(
+                f"SELECT {_POS_COLS} FROM vc_positions{where} ORDER BY seq DESC LIMIT 1",
+                args).fetchone()
 
     def poll(self) -> Optional[PlayerState]:
         if not self._try_connect():
@@ -144,6 +200,29 @@ class SqlFileProvider:
             identity=str(row["cdkey"] or row["playername"] or row["charname"] or ""),
         )
 
+    def _fresh(self, key: str, seq, now: float) -> bool:
+        """Registra l'avanzamento di ``seq`` per ``key``; False se e' fermo da troppo."""
+        prev = self._roster_seen.get(key)
+        if prev is None or prev[0] != seq:
+            self._roster_seen[key] = (seq, now)      # advanced (or first sighting): fresh
+            return True
+        return now - prev[1] <= self.roster_stale_after
+
+    def _dm_rows(self):
+        """Righe dei DM; None se la tabella non c'e' (modulo vecchio, che non scrive i
+        DM da nessuna parte), [] se il DB e' occupato."""
+        try:
+            return self._conn.execute(f"SELECT {_DM_COLS} FROM vc_dm_pos").fetchall()
+        except sqlite3.OperationalError as e:
+            return None if "no such table" in str(e) else []
+        except sqlite3.Error:
+            return []
+
+    def _is_me(self, r) -> bool:
+        p = (self.player or "").lower()
+        return bool(p) and p in (_s(r, "playername").lower(), _s(r, "charname").lower(),
+                                 _s(r, "cdkey").lower())
+
     def read_roster(self):
         """All current players as roster rows for the shared-memory roster the
         Mumble plugin reads: ``(name, area, x, y, z, mode)``. Empty list on any
@@ -157,14 +236,17 @@ class SqlFileProvider:
         format unchanged (no plugin rebuild) at the cost of up to 2 slots/player
         (so ~32 concurrent players within MAX_ENTRIES=64; ample for <=30 users).
 
-        GHOSTS (#2): the campaign DB has no DELETE-on-disconnect, so a row lingers
-        after a player leaves (and survives a server restart). We track each
-        player's ``seq``; once it stops advancing for > stale_after seconds the row
-        is a ghost and is dropped, so nobody is heard at a frozen position. Ghost
-        detection requires a non-null ``seq`` value: a NULL/absent seq compares
-        equal to itself, so such a row would be treated as permanently frozen and
-        dropped after stale_after. The production NWScript (vc_voice.nss) always
-        binds a non-null seq, so this only matters for off-spec writers."""
+        GHOSTS (#2): we track each player's ``seq``; once it stops advancing for
+        > roster_stale_after seconds the row is a ghost and is dropped, so nobody
+        is heard at a frozen position. Ghost detection requires a non-null ``seq``
+        value: a NULL/absent seq compares equal to itself, so such a row would be
+        treated as permanently frozen and dropped after roster_stale_after. The
+        production NWScript (vc_voice.nss) always binds a non-null seq, so this
+        only matters for off-spec writers.
+
+        DM: vedi _dm_entries. Le loro voci vanno in TESTA: il plugin prende la prima
+        voce col nome giusto, e se il roster supera MAX_ENTRIES si taglia la coda, non
+        queste."""
         if not self._try_connect():
             return []
         try:
@@ -176,93 +258,101 @@ class SqlFileProvider:
                 pass
             self._conn = None
             return []
+        dm_rows = self._dm_rows()
         now = time.perf_counter()
-        seen = self._roster_seen
         out = []
         alive = set()
         for r in rows:
             keys = r.keys()
-            cdkey = (str(r["cdkey"]) if "cdkey" in keys and r["cdkey"] is not None
-                     else "")
-            pname = str(r["playername"] or "").strip() if "playername" in keys else ""
-            cname = str(r["charname"] or "").strip() if "charname" in keys else ""
-            seq = r["seq"] if "seq" in keys else None
             # Freshness key: cdkey is the stable per-player id; fall back to a name.
-            skey = cdkey or pname or cname
+            skey = _s(r, "cdkey") or _s(r, "playername") or _s(r, "charname")
             if not skey:
                 continue
             alive.add(skey)
-            prev = seen.get(skey)
-            if prev is None or prev[0] != seq:
-                seen[skey] = (seq, now)          # advanced (or first sighting): fresh
-            elif now - prev[1] > self.stale_after:
+            if not self._fresh(skey, r["seq"] if "seq" in keys else None, now):
                 continue                          # seq frozen too long => ghost, drop
-            mode = (int(r["range_mode"]) if ("range_mode" in keys
-                    and r["range_mode"] is not None) else 1)
-            area = str(r["area"] or "")
-            x, y, z = float(r["x"]), float(r["y"]), float(r["z"])
-            # Emit under both the account and character name (deduped); the plugin
-            # matches the Mumble username against either.
-            names = []
-            for nm in (pname, cname):
-                if nm and nm.lower() not in [e.lower() for e in names]:
-                    names.append(nm)
-            if not names and cdkey:
-                names.append(cdkey)
-            for nm in names:
-                out.append((nm, area, x, y, z, mode))
+            out += _entries(r, _mode(r))
+        # DM presenti (riga che avanza): le loro voci dipendono da chi ascolta.
+        dms, me_dm = ({} if dm_rows is not None else None), None
+        for r in dm_rows or []:
+            key = "dm:" + (_s(r, "cdkey") or _s(r, "playername") or _s(r, "charname"))
+            alive.add(key)
+            if not self._fresh(key, r["seq"], now):
+                continue
+            dms[_s(r, "cdkey")] = r
+            if self._is_me(r):
+                me_dm = r
         # Drop freshness state for players no longer in the table (bound growth).
-        for k in [k for k in seen if k not in alive]:
-            del seen[k]
-        # Voce privata DM ("Appari solo a"): muta i DM-speaker per i NON-selezionati.
-        return self._apply_private(out, rows)
+        for k in [k for k in self._roster_seen if k not in alive]:
+            del self._roster_seen[k]
+        return self._dm_entries(rows, dms, me_dm) + out
 
     def _my_cdkey(self, rows) -> str:
         """cdkey di QUESTO ascoltatore (self.player puo' essere account o char name)."""
-        p = (self.player or "").lower()
-        if not p:
-            return ""
         for r in rows:
-            keys = r.keys()
-            ck = (str(r["cdkey"]) if "cdkey" in keys and r["cdkey"] is not None else "")
-            pn = (str(r["playername"]) if "playername" in keys and r["playername"] else "").lower()
-            cn = (str(r["charname"]) if "charname" in keys and r["charname"] else "").lower()
-            if p == pn or p == cn or p == ck.lower():
-                return ck
+            if self._is_me(r):
+                return _s(r, "cdkey")
         return ""
 
-    def _apply_private(self, out, rows):
-        """Per ogni sessione 'Appari solo a' ATTIVA: se IO (l'ascoltatore) NON sono un membro
-        (e non sono io il DM-speaker), inietto il DM nel mio roster con un'area fasulla ->
-        il plugin lo silenzia. I membri restano fuori dal roster -> lo sentono (audio normale).
-        Robusto se le tabelle vc_priv_* non esistono ancora (nessuna sessione)."""
-        assert self._conn is not None
+    def _active_sessions(self) -> dict:
+        """Sessioni "Isola" accese: {cdkey del DM: [nome account, nome personaggio]}.
+        Vuoto se le tabelle vc_priv_* non esistono ancora o il DB e' occupato."""
         try:
             sess = self._conn.execute(
                 "SELECT spk, spk_p, spk_c FROM vc_priv_session WHERE active=1").fetchall()
         except sqlite3.Error:
-            return out                       # tabella non ancora creata o DB occupato: nessun filtro
-        if not sess:
+            return {}
+        return {str(s["spk"] or ""): [str(s["spk_p"] or ""), str(s["spk_c"] or "")]
+                for s in sess}
+
+    def _is_member(self, spk: str, my: str) -> bool:
+        if not my:
+            return False
+        try:
+            return self._conn.execute(
+                "SELECT 1 FROM vc_priv_member WHERE spk=? AND mem=?",
+                (spk, my)).fetchone() is not None
+        except sqlite3.Error:
+            return False
+
+    def _dm_entries(self, rows, dms, me_dm) -> list:
+        """Le voci dei DM nel roster di QUESTO ascoltatore (vanno in testa, vedi read_roster):
+        - io, se sono un DM: sempre, per sentire chi ho intorno;
+        - DM in emergenza: nessuna voce -> il plugin lo lascia a volume pieno, ovunque;
+        - DM con "Isola" accesa (allucinazione): chi e' selezionato, e gli altri DM, lo
+          sentono come un giocatore (distanza + portata); per tutti gli altri e' in
+          un'area fasulla -> muto;
+        - altrimenti: come un giocatore.
+        La sessione di un DM che non c'e' (uscito, tornato giocatore) non conta: la spegne
+        lo script, ma se non ci riuscisse nessuno resterebbe mutato per sempre.
+        ``dms`` None = modulo vecchio senza vc_dm_pos: il DM non e' nel roster (lo sentono
+        tutti) e "Isola" lo muta ai non selezionati, come prima."""
+        sess = self._active_sessions()
+        my = _s(me_dm, "cdkey") if me_dm is not None else self._my_cdkey(rows)
+        out = []
+
+        def mute(names):
+            out.extend((nm, PRIV_MUTE_AREA, 0.0, 0.0, 0.0, 1) for nm in names if nm)
+
+        if dms is None:
+            for spk, names in sess.items():
+                if spk != my and not self._is_member(spk, my):
+                    mute(names)
             return out
-        my = self._my_cdkey(rows)
-        for s in sess:
-            spk = str(s["spk"] or "")
-            if my and my == spk:
-                continue                     # sono io il DM-speaker: non mi muto
-            is_member = False
-            if my:
-                try:
-                    is_member = self._conn.execute(
-                        "SELECT 1 FROM vc_priv_member WHERE spk=? AND mem=?",
-                        (spk, my)).fetchone() is not None
-                except sqlite3.Error:
-                    is_member = False
-            if is_member:
-                continue                     # selezionato: sento il DM normalmente (full)
-            # non-membro: inietto il DM (entrambi i nomi) in area fasulla -> mutato
-            for nm in {str(s["spk_p"] or ""), str(s["spk_c"] or "")}:
-                if nm:
-                    out.append((nm, PRIV_MUTE_AREA, 0.0, 0.0, 0.0, 1))
+        if me_dm is not None:
+            out += _entries(me_dm, _mode(me_dm))
+        for spk, d in dms.items():
+            if d is me_dm:
+                continue
+            mode = _mode(d)
+            if mode == EMERGENCY_MODE:
+                continue                     # emergenza: lo sentono tutti
+            if spk in sess and me_dm is None and not self._is_member(spk, my):
+                names = _names(d)
+                mute(names + [nm for nm in sess[spk]
+                              if nm.lower() not in [e.lower() for e in names]])
+                continue
+            out += _entries(d, mode)
         return out
 
     def close(self) -> None:
