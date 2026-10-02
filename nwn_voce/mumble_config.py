@@ -50,11 +50,13 @@ _EMPTY_DATA = "AAAAAAE="        # QVariant nullo: come lo scrive Mumble per il p
 
 def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
                  output_device: Optional[str] = None,
-                 transmit: str = "ptt", ptt_key: Optional[dict] = None) -> str:
+                 transmit: str = "ptt", ptt_key: Optional[dict] = None,
+                 speakers: bool = False) -> str:
     """Crea/aggiorna il file di impostazioni del nostro Mumble e ne ritorna il percorso.
 
     transmit: "ptt" (premi per parlare, predefinito) o "vad" (attivazione vocale).
     ptt_key:  tasto del push-to-talk (vedi mumble_keys); None = Blocco Maiuscole.
+    speakers: il giocatore usa le CASSE, non le cuffie -> cancellazione dell'eco accesa.
     """
     from . import mumble_keys
     path = paths.mumble_settings_file()
@@ -103,6 +105,23 @@ def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
     audio["mute"] = False
     audio["deaf"] = False
 
+    # Qualita' della voce (02/10/2026): i valori di fabbrica di Mumble la impastavano.
+    #  - riduzione del rumore ReNameNoise (rete neurale) al posto di Speex a -30 dB,
+    #    che mangia le code delle parole e da' l'effetto "sott'acqua";
+    #  - niente cancellazione dell'eco Speex: in gioco si usano le cuffie, e quando
+    #    sbaglia ritardo o volume e' lei a sporcare e distorcere la voce. Chi usa le
+    #    CASSE (impostazione "Uso le casse" dell'app) la riaccende, se no gli altri
+    #    sentono la propria voce tornare indietro: Speex multicanale, la piu' efficace;
+    #  - 72 kbit/s invece di 40, restando sull'Opus per la voce (allow_low_delay_mode
+    #    False: senza, oltre i 64 kbit/s Mumble passa all'Opus "low delay" da musica).
+    # Valori verificati sul mumble.exe 1.5.12 incluso: nel registro compaiono
+    # "Using ReNameNoise as noise canceller", "0 channel echo", "high quality speech";
+    # con speakers=True (e WASAPI): "2 channel echo", "ECHO CANCELLER ACTIVE".
+    audio["noise_cancel_mode"] = "RNN"
+    audio["echo_cancel_mode"] = "Speex_Multichannel" if speakers else "Disabled"
+    audio["audio_quality"] = 72000
+    audio["allow_low_delay_mode"] = False
+
     # Come si trasmette: il giocatore lo sceglie nell'app, mai dentro Mumble.
     key = ptt_key if ptt_key and mumble_keys.is_supported(ptt_key) else mumble_keys.DEFAULT_KEY
     button, suppress = mumble_keys.encode(key)
@@ -118,7 +137,7 @@ def write_config(mumble_dir: str, *, input_device: Optional[str] = None,
                     "index": PTT_SHORTCUT_INDEX, "suppress": suppress})
     shortcuts["defined"] = defined
     backend = data.setdefault("audio_backend", {})
-    if input_device or output_device:
+    if input_device or output_device or speakers:      # l'eco si cancella solo con WASAPI
         audio["input_system"] = "WASAPI"
         audio["output_system"] = "WASAPI"
     # Vuoto = "Predefinito di Windows": togliamo una scelta precedente.

@@ -133,6 +133,11 @@ class Api:
         settings.update(transmit=transmit, ptt_key=key)
         return {"ok": True}
 
+    def save_speakers(self, on) -> dict:
+        """"Uso le casse, non le cuffie": riaccende la cancellazione dell'eco (dal prossimo Connetti)."""
+        settings.update(speakers=bool(on))
+        return {"ok": True}
+
     def save_lang(self, lang) -> bool:
         settings.update(lang=lang)
         return True

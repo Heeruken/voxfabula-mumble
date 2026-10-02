@@ -79,6 +79,10 @@
           <select id="set-output"></select>
         </div>
         <div class="field">
+          <label class="check"><input id="set-speakers" type="checkbox"> <span data-i18n="set_speakers"></span></label>
+          <div class="set-hint" data-i18n="set_speakers_hint"></div>
+        </div>
+        <div class="field">
           <label for="set-transmit" data-i18n="set_transmit"></label>
           <select id="set-transmit" onchange="renderVoice()">
             <option value="ptt" data-i18n="tx_ptt"></option>
@@ -141,6 +145,8 @@
         set_server: "Server (avanzato)",
         set_server_hint: "Lascia vuoto: l'app va da sola sul server di Vox Fabula. Serve solo per prove.",
         set_save: "Salva", set_back: "Indietro",
+        set_speakers: "Uso le casse, non le cuffie",
+        set_speakers_hint: "Accendilo solo se non usi le cuffie: toglie l'eco delle casse, che gli altri sentirebbero. Con le cuffie lascialo spento, la voce è più pulita. Vale dal prossimo Connetti.",
         set_transmit: "Come parli",
         tx_ptt: "Premi per parlare (tieni premuto un tasto)",
         tx_vad: "Attivazione vocale (parli e basta)",
@@ -191,6 +197,8 @@
         set_server: "Server (advanced)",
         set_server_hint: "Leave empty: the app finds the Vox Fabula server by itself. Only for testing.",
         set_save: "Save", set_back: "Back",
+        set_speakers: "I use speakers, not headphones",
+        set_speakers_hint: "Turn it on only without headphones: it removes the echo of your speakers that others would hear. With headphones leave it off, your voice is cleaner. Applies from the next Connect.",
         set_transmit: "How you talk",
         tx_ptt: "Push to talk (hold a key)",
         tx_vad: "Voice activation (just talk)",
@@ -433,6 +441,7 @@
       fillSelect("set-input", dev.input, s.input_device);
       fillSelect("set-output", dev.output, s.output_device);
       document.getElementById("set-transmit").value = s.transmit === "vad" ? "vad" : "ptt";
+      document.getElementById("set-speakers").checked = !!s.speakers;
       pttKey = s.ptt_key || DEFAULT_KEY;
       document.getElementById("ptt-hint").textContent = "";
       document.getElementById("set-server").value = s.server || "";
@@ -449,6 +458,7 @@
       try { await window.pywebview.api.save_server(server); } catch (e) {}
       try { await window.pywebview.api.save_audio(name, inp, out); } catch (e) {}
       try { await window.pywebview.api.save_voice(tx, pttKey); } catch (e) {}
+      try { await window.pywebview.api.save_speakers(document.getElementById("set-speakers").checked); } catch (e) {}
       if (name) document.getElementById("name").value = name;
       closeSettings();
     }

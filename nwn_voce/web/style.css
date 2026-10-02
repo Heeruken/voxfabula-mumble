@@ -304,3 +304,7 @@ body.paused .ambient, body.paused .ambient *, body.paused .ambient::before, body
 @media (prefers-reduced-motion: reduce) {
   .ambient { display: none; }
 }
+
+/* casella "Uso le casse": la casella accanto al testo, non sopra come le altre etichette */
+.field label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.field label.check input { width: 18px; height: 18px; padding: 0; margin: 0; box-shadow: none; accent-color: var(--crystal); flex: none; }

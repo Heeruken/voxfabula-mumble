@@ -147,6 +147,17 @@ class TestMumbleConfig(unittest.TestCase):
                 vc = os.path.join(mdir, "plugins", "vc_range.dll")
                 self.assertTrue(d["plugins"][mumble_config.plugin_key(vc)]["enabled"])
                 self.assertEqual(d["audio_backend"]["wasapi_input"], "{0.0.1.00000000}.{x}")
+                # qualita' della voce: niente Speex (rumore ed eco), 72 kbit/s sull'Opus per la voce
+                self.assertEqual(d["audio"]["noise_cancel_mode"], "RNN")
+                self.assertEqual(d["audio"]["echo_cancel_mode"], "Disabled")
+                self.assertEqual(d["audio"]["audio_quality"], 72000)
+                self.assertFalse(d["audio"]["allow_low_delay_mode"])
+                # "Uso le casse": cancellazione dell'eco accesa, e su WASAPI (l'unico che la fa)
+                ds = _read(mumble_config.write_config(mdir, speakers=True))
+                self.assertEqual(ds["audio"]["echo_cancel_mode"], "Speex_Multichannel")
+                self.assertEqual(ds["audio"]["input_system"], "WASAPI")
+                self.assertEqual(_read(mumble_config.write_config(mdir))["audio"]["echo_cancel_mode"], "Disabled")
+                d = _read(mumble_config.write_config(mdir, input_device="{0.0.1.00000000}.{x}"))
 
                 d["certificate"] = "CERT-GENERATO-DA-MUMBLE"   # Mumble lo aggiunge al 1o avvio
                 _write(path, d)

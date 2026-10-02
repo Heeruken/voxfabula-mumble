@@ -6,7 +6,7 @@ posizione dei personaggi e la passa al plugin di portata vc_range.
 (Il pacchetto Python si chiama ancora nwn_voce: nome interno, non si vede.)
 """
 
-__version__ = "1.2.1"
+__version__ = "1.2.3"
 APP_NAME = "Vox Fabula Voice"
 # Il server della voce: un nome che punta sempre a casa del server (lo tiene
 # aggiornato C:\NWN\scripts\ddns_voice.py quando cambia l'IP). I giocatori
