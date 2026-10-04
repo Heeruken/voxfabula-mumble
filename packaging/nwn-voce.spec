@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Vox Fabula Voice - build a CARTELLA (onedir). Non usare onefile: si riscompatta in
+# Vox Fabula Companion - build a CARTELLA (onedir). Non usare onefile: si riscompatta in
 # Temp a ogni avvio (lento, e gli antivirus lo guardano male).
-# Uscita: dist\Vox Fabula Voice\  ->  "Vox Fabula Voice.exe" + "_internal\" (web, mumble, python).
+# Uscita: dist\Vox Fabula Companion\  ->  "Vox Fabula Companion.exe" + "_internal\" (web, mumble, python).
 # Lanciare da packaging\build.ps1, non a mano.
 import os
 import re
@@ -67,7 +67,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Vox Fabula Voice',
+    name='Vox Fabula Companion',
     debug=False,
     strip=False,
     upx=False,          # UPX = classico falso positivo degli antivirus: mai
@@ -75,4 +75,4 @@ exe = EXE(
     icon=os.path.join(SPECPATH, 'icon.ico'),
     version=VERFILE,
 )
-coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='Vox Fabula Voice')
+coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='Vox Fabula Companion')

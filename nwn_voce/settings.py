@@ -1,4 +1,4 @@
-"""Impostazioni dell'app (%APPDATA%\\Vox Fabula Voice\\settings.json)."""
+"""Impostazioni dell'app (%APPDATA%\\Vox Fabula Companion\\settings.json)."""
 
 from __future__ import annotations
 

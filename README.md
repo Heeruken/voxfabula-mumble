@@ -1,25 +1,31 @@
-# Vox Fabula Voice
+# Vox Fabula Companion
 
-Voce di prossimità per **Neverwinter Nights: Enhanced Edition**. Più un personaggio è lontano, più lo senti piano. Chi **sussurra** si sente entro 4 m, chi **parla** entro 12 m, chi **urla** entro 35 m. Personaggi in aree diverse non si sentono.
+Il programma che i giocatori di Vox Fabula tengono aperto accanto a **Neverwinter Nights: Enhanced Edition**. Fino alla 1.2.x si chiamava *Vox Fabula Voice*. Fa due cose:
+- **voce di prossimità**;
+- **cinema**: i video che il server chiede (l'ingresso in un evento, un finale), mostrati sopra il gioco.
 
-Qui c'è tutto il sistema voce: l'**app** che aprono i giocatori (`nwn_voce/`), il **relay** che gira sul server in Docker (`relay/`) e il **plugin** di Mumble (`plugin/`). Il resto dello stack del server (NWN, server Mumble, bot Discord) sta nel `docker-compose.yml` del server.
+**Voce di prossimità.** Più un personaggio è lontano, più lo senti piano. Chi **sussurra** si sente entro 4 m, chi **parla** entro 12 m, chi **urla** entro 35 m. Personaggi in aree diverse non si sentono.
+
+Qui c'è tutto il sistema: l'**app** che aprono i giocatori (`nwn_voce/`, nome interno rimasto dai tempi di "NWN Voce"), il **relay** che gira sul server in Docker (`relay/`) e il **plugin** di Mumble (`plugin/`). Il resto dello stack del server (NWN, server Mumble, bot Discord) sta nel `docker-compose.yml` del server.
 
 ## Per i giocatori
 
-1. Installa con `VoxFabula-Voice-Setup-<versione>.exe`, oppure scompatta lo zip `…-portatile.zip` dove vuoi.
-2. Apri **Vox Fabula Voice**, scrivi il tuo **nome account NWN**, premi **Connetti**. L'indirizzo non serve: l'app va da sola su `voice.voxfabula.it`.
+1. Installa con `VoxFabula-Companion-Setup-<versione>.exe`, oppure scompatta lo zip `…-portatile.zip` dove vuoi.
+2. Apri **Vox Fabula Companion**, scrivi il tuo **nome account NWN**, premi **Connetti**. L'indirizzo non serve: l'app va da sola su `voice.voxfabula.it`.
 3. Apri NWN ed entra nel server. Quando sei in gioco la voce diventa **ATTIVA**.
 
 **L'indirizzo della voce.** `voice.voxfabula.it` è un record DNS (Cloudflare, nuvola grigia) che punta all'IP di casa del server. L'IP di casa cambia, e lo tiene aggiornato `C:\NWN\scripts\ddns_voice.py` sul PC del server: un'attività di Windows lo lancia all'accesso e poi ogni 5 minuti, con una chiave Cloudflare che può modificare solo il DNS di voxfabula.it. Il registro è in `%LOCALAPPDATA%\VoxFabula\ddns-voice.log`. Dopo un cambio di IP la voce torna al massimo in 5-6 minuti: il relay si ricollega da solo e rilegge il nome a ogni tentativo. Nell'ingranaggio c'è **Server (avanzato)**, vuoto di base, per le prove (per esempio `127.0.0.1` sul PC del server). L'IP scritto a mano nelle versioni precedenti viene ignorato.
 
-L'app non installa niente nel sistema e non chiede di essere amministratore. Usa un Mumble suo, con impostazioni sue: se usi già Mumble per altro, **non viene né chiuso né modificato**, e i due possono restare aperti insieme. Tutti i dati dell'app stanno in `%APPDATA%\Vox Fabula Voice`.
+L'app non installa niente nel sistema e non chiede di essere amministratore. Usa un Mumble suo, con impostazioni sue: se usi già Mumble per altro, **non viene né chiuso né modificato**, e i due possono restare aperti insieme. Tutti i dati dell'app stanno in `%APPDATA%\Vox Fabula Companion`: alla prima apertura col nome nuovo, nome, tasto, microfono e Mumble vengono copiati da `%APPDATA%\Vox Fabula Voice`.
+
+Il pulsante **ⓘ** in alto apre **"Cosa fa sul tuo PC"**: tutto quello che il programma fa e non fa, il registro di ogni video mostrato, saltato o scaricato, e l'interruttore **Mostra i video del server**.
 
 **"Windows ha protetto il PC"**: l'app non è firmata con un certificato a pagamento, quindi al primo avvio Windows lo dice. Clicca **Ulteriori informazioni → Esegui comunque**. Le impronte SHA-256 dei file ufficiali sono nelle note di ogni versione: puoi controllarle su [VirusTotal](https://www.virustotal.com).
 
 ## Come funziona
 
 ```
-server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► Vox Fabula Voice (questo client)
+server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► Vox Fabula Companion (questo client)
                                                            │  ponte (thread)
                                                            ▼
                                           memoria condivisa "nwn_voice_roster"
@@ -31,7 +37,7 @@ server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► Vox
 
 - Le posizioni le scrive il **server** (NWScript). Il client di gioco non viene toccato: niente lettura della memoria di NWN, quindi nessuna patch del gioco lo rompe.
 - L'audio posizionale nativo di Mumble è **spento**, perché ronza (bug Mumble #4169). Distanza, portata e pan stereo li fa tutti `vc_range`.
-- Il nostro Mumble parte con `mumble.exe -m -c "%APPDATA%\Vox Fabula Voice\mumble_settings.json"`: `-c` usa un file di impostazioni separato, `-m` permette di girare accanto a un altro Mumble.
+- Il nostro Mumble parte con `mumble.exe -m -c "%APPDATA%\Vox Fabula Companion\mumble_settings.json"`: `-c` usa un file di impostazioni separato, `-m` permette di girare accanto a un altro Mumble.
 - Il giocatore non deve mai aprire Mumble. L'app ne scrive le impostazioni: push-to-talk (di base **Blocco Maiuscole**, si cambia dall'ingranaggio), niente controlli di aggiornamento di Mumble, niente procedure guidate. A ogni Connetti legge anche il certificato che il server presenta in quel momento e lo segna come accettato, così la domanda "accetti questo certificato?" non compare mai, nemmeno se il certificato del server cambia.
 
 | File | Cosa fa |
@@ -44,6 +50,38 @@ server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► Vox
 | `nwn_voce/net_protocol.py` | protocollo col relay (**non cambiarlo** senza aggiornare il relay) |
 | `nwn_voce/winproc.py` | trova e chiude **solo** il nostro `mumble.exe`, per percorso |
 | `plugin/vc_range.c` | il plugin Mumble (API ufficiale) |
+| `nwn_voce/regia.py` | richieste di video dal relay → lettore in un processo a parte; registro attività |
+| `nwn_voce/cinema.py` | il lettore (`--video <file>`): finestra sopra l'area di gioco di NWN |
+| `nwn_voce/videoteca.py` | scarica e verifica i video del server |
+| `nwn_voce/sigillo.py` | sigilla e apre i video `.vfv` (niente spoiler) |
+
+## Cinema: video chiesti dal server
+
+NWN non sa riprodurre un video a metà partita: c'è solo il video d'apertura del modulo, e `EndGame` butta fuori tutto il server. Per questo il video lo mostra il Companion.
+
+```
+script del modulo: VF_Cinema(oPC, "ingresso_ossario", "script_dopo")   (vf_cinema_inc.nss)
+   │  personaggio fermo e protetto, schermo a nero
+   ▼
+tabella vf_cinema nel DB "nwn_voice"  ──►  relay  ──►  Companion di QUEL giocatore
+                                                          │ regia.py: video presente? interruttore acceso?
+                                                          ▼
+                                       "Vox Fabula Companion.exe --video <file>"  (processo separato)
+                                                          │ visto / saltato / errore ...
+   script_dopo, via il nero  ◄──  DB  ◄──  relay  ◄──  esito
+```
+
+- **Lettore** (`cinema.py`): una finestra senza bordi, senza icona nella barra, sempre sopra, posata esattamente sull'area di gioco di NWN (in finestra) o su tutto lo schermo. Non si sposta e si salta solo con **Esc**. Se il giocatore va in un'altra finestra il video va in pausa; dopo 3 minuti conta come saltato. Se NWN è in schermo intero **esclusivo** (letto da `settings.tml`), prima si riduce a icona e alla fine torna davanti. Reti di sicurezza: se il video non parte in 10 s, o dura più della sua durata + 15 s, si chiude da solo.
+- **Un crash del lettore non tocca la voce**: è un processo a parte, e l'esito torna come codice d'uscita (0 visto, 3 saltato, 2 mancante, 1 errore).
+- **Esiti** per lo script: `visto`, `saltato`, `errore`, `mancante` (il video non è sul PC), `disattivato` (il giocatore ha spento i video), `occupato`, più quelli del relay e dello script: `assente` (nessun Companion 1.3+ collegato: dopo 3 s si va avanti), `disconnesso`, `scaduto`, `uscito`. **In ogni caso il personaggio va avanti.**
+- **Video**: nomi `a-z 0-9 _ -`. Si pubblicano **sigillati** (`.vfv`, `sigillo.py`): un doppio clic non li apre e su R2 non si guardano, così nessuno si spoilera un evento. La chiave sta nel Companion, ed è voluto: serve contro i curiosi, non contro chi smonta il programma. Il lettore apre il `.vfv` in una copia temporanea che cancella alla fine. Accetta anche `.webm`/`.mp4` in chiaro, utili per le prove. La `videoteca` li scarica a ogni Connetti da `https://nwsync.voxfabula.it/prod/2985642d4b434caab09571e1ec2058f8/cinema/catalogo.json`:
+  ```json
+  {"video": [{"nome": "ingresso_ossario", "file": "ingresso_ossario.webm", "sha256": "…", "size": 12345678}]}
+  ```
+  Solo HTTPS e solo quel dominio. Ogni file viene verificato con l'impronta. Si cancellano solo i video scaricati dall'app che spariscono dal catalogo; un catalogo malformato non cancella niente.
+- **Lato modulo** (`voxfabula/src/module`): `vf_cinema_inc.nss` (la funzione), `vf_finale.nss` (pannello DM `/finale`: scegli i PG e il video, poi continuano, vanno a un waypoint o escono dal server, solo loro), `vf_finale_poi.nss`. Esempio nel dungeon: `dg_enter.nss`.
+- **Attenzione, regola per gli script**: il DB voce è in modalità *delete* (non WAL). Una SELECT letta a metà in una funzione che poi chiama `DelayCommand` resta viva e tiene il DB bloccato, e il relay non riesce più a scrivere. Ogni SELECT va in una funzione a parte, letta fino in fondo.
+- **Collaudo**: `python -m unittest tests.test_relay tests.test_cinema` (relay e app); `voxfabula/docs/cinema/collaudo/collaudo_cinema.py` fa la catena intera su nwserver vero con Companion finti. `prove_cinema/prova_completa.py` serve per la prova in partita locale con il lettore vero.
 
 ## Sviluppo
 
@@ -51,7 +89,8 @@ Serve Python 3.10 con `pyinstaller`, `pywebview`, `pythonnet`, più **Inno Setup
 
 ```
 python -m nwn_voce                          # avvia da sorgente
-python -m unittest -v tests.test_nwn_voce   # test (senza Docker, Mumble o NWN)
+python -m unittest discover -s tests       # test (senza Docker, Mumble o NWN)
+python -m nwn_voce --video <file>          # solo il lettore video, per provarlo
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
@@ -69,7 +108,7 @@ Gira nel Docker del server. Legge dal database del gioco dove sta ogni personagg
 
 | File | Cosa fa |
 |---|---|
-| `relay/server.py` | accetta le app, manda posizione e roster; scrive l'icona "chi parla" |
+| `relay/server.py` | accetta le app, manda posizione e roster; scrive l'icona "chi parla"; inoltra le richieste di video (`vf_cinema`) e ne scrive l'esito |
 | `relay/positions.py` | legge `vc_positions`; voce privata DM (`vc_priv_session` / `vc_priv_member`) |
 | `relay/talk_listener.py` | bot Mumble che sente chi parla |
 | `relay/fantoccio.py` | bot-eco **di test** (solo con `--fantoccio`) |
@@ -85,7 +124,7 @@ La build si fa dalla radice, ma il `.dockerignore` lascia passare solo `relay/` 
 
 ## Aggiornamento automatico
 
-All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-mumble`. Se è più nuova, mostra un riquadro con le note della versione e i pulsanti **Aggiorna / Più tardi**. Se l'utente accetta, l'app scarica `VoxFabula-Voice-Setup-<ver>.exe`, ne verifica l'impronta SHA-256 (quella che GitHub calcola da solo per ogni file), si chiude e lancia l'installer in modalità silenziosa. L'installer sostituisce i file e la riapre.
+All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-mumble`. Se è più nuova, mostra un riquadro con le note della versione e i pulsanti **Aggiorna / Più tardi**. Se l'utente accetta, l'app scarica `VoxFabula-Companion-Setup-<ver>.exe` (le 1.2.x cercano `VoxFabula-Voice-Setup-<ver>.exe`), ne verifica l'impronta SHA-256 (quella che GitHub calcola da solo per ogni file), si chiude e lancia l'installer in modalità silenziosa. L'installer sostituisce i file e la riapre.
 
 - Si scarica solo via HTTPS e solo da domini GitHub, controllati anche dopo i redirect. Una Release senza impronta viene ignorata; un file che non corrisponde viene buttato.
 - Chi usa lo **zip portatile** non si aggiorna da solo: il pulsante apre la pagina della versione nel browser.
@@ -95,7 +134,7 @@ All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-mumb
 
 1. Alza `__version__` in `nwn_voce/__init__.py` e lancia `packaging\build.ps1`.
 2. Su GitHub: **Releases → Draft a new release**. Tag `v<versione>` (per esempio `v1.2.1`), titolo, e nelle note cosa cambia, scritto per i giocatori.
-3. Trascina dentro `VoxFabula-Voice-Setup-<versione>.exe`, **`NWN-Voce-Setup-<versione>.exe`** (lo stesso file col nome vecchio: serve a chi ha ancora la 1.2.0, che cerca solo quel nome) e lo zip portatile, poi **Publish release**. Non spuntare "pre-release": le pre-release vengono ignorate, ed è un modo comodo per provare una versione senza mandarla a tutti.
+3. Trascina dentro `VoxFabula-Companion-Setup-<versione>.exe`, **`VoxFabula-Voice-Setup-<versione>.exe`** e **`NWN-Voce-Setup-<versione>.exe`**, più lo zip portatile, poi **Publish release**. Sono lo stesso file: i due nomi vecchi servono a chi ha ancora la 1.2.1-1.2.x o la 1.2.0, che cercano solo il loro nome. Non spuntare "pre-release": le pre-release vengono ignorate, ed è un modo comodo per provare una versione senza mandarla a tutti.
 
 Da quel momento, chi apre l'app vede l'aggiornamento. GitHub permette 60 controlli l'ora per ogni rete: con un controllo per avvio si resta molto sotto.
 
@@ -107,6 +146,13 @@ Senza certificato l'avviso "editore sconosciuto" resta. Le cose gratuite che lo 
 2. **Segnala il file a Microsoft** (<https://www.microsoft.com/wdsi/filesubmission>, "Software developer"), così Defender lo impara.
 3. **Cambia versione il meno possibile**: SmartScreen costruisce la reputazione **per singolo file**. Ogni nuova build riparte da zero, quindi meglio poche versioni scaricate da tanti che tante versioni scaricate da pochi.
 4. **Distribuisci sempre dallo stesso posto**, per esempio le Release di GitHub, e con le impronte SHA-256 in vista.
+
+## Novità della 1.3.0
+
+- Si chiama **Vox Fabula Companion**. Per Windows resta lo stesso programma (stesso AppId): l'aggiornamento toglie cartella e collegamenti col nome vecchio, e le impostazioni vengono copiate nella cartella nuova.
+- **Cinema**: video chiesti dal server, mostrati sopra il gioco; videoteca scaricata e verificata.
+- **"Cosa fa sul tuo PC"**: trasparenza su tutto quello che il programma fa, registro attività, interruttore dei video.
+- Protocollo col relay **compatibile**: le app vecchie ignorano i messaggi nuovi, e il relay non manda video a chi non dice di saperli mostrare.
 
 ## Novità della 1.1.0 (rispetto alla 1.0 del giugno 2026)
 

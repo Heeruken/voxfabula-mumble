@@ -1,21 +1,22 @@
-# Build di Vox Fabula Voice in UN comando, dalla radice del progetto:
+# Build di Vox Fabula Companion in UN comando, dalla radice del progetto:
 #     powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 #
 # Produce in dist\:
-#   Vox Fabula Voice\                     l'app (cartella)
-#   VoxFabula-Voice-<ver>-portatile.zip   da scompattare e usare senza installare
-#   VoxFabula-Voice-Setup-<ver>.exe       installer (se Inno Setup 6 e' installato)
+#   Vox Fabula Companion\                 l'app (cartella)
+#   VoxFabula-Companion-<ver>-portatile.zip   da scompattare e usare senza installare
+#   VoxFabula-Companion-Setup-<ver>.exe       installer (se Inno Setup 6 e' installato)
+#   + lo stesso installer coi nomi vecchi (VoxFabula-Voice-, NWN-Voce-), per l'aggiornamento automatico
 # e stampa l'impronta SHA-256 di ogni file (da controllare su VirusTotal).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 
 $version = (Select-String -Path 'nwn_voce\__init__.py' -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-Write-Host "Vox Fabula Voice $version" -ForegroundColor Cyan
+Write-Host "Vox Fabula Companion $version" -ForegroundColor Cyan
 
 # 1) i test devono passare: niente build di una versione rotta
 Write-Host "Test..." -ForegroundColor Cyan
-python -m unittest -q tests.test_nwn_voce tests.test_updater tests.test_relay
+python -m unittest -q tests.test_nwn_voce tests.test_updater tests.test_relay tests.test_cinema
 if ($LASTEXITCODE -ne 0) { throw "Test falliti: build annullata." }
 
 # 2) Mumble portatile + plugin fresco
@@ -30,8 +31,8 @@ python -m PyInstaller packaging\nwn-voce.spec --noconfirm --distpath dist --work
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller fallito." }
 
 # 4) zip portatile
-$zip = "dist\VoxFabula-Voice-$version-portatile.zip"
-Compress-Archive -Path 'dist\Vox Fabula Voice' -DestinationPath $zip -CompressionLevel Optimal
+$zip = "dist\VoxFabula-Companion-$version-portatile.zip"
+Compress-Archive -Path 'dist\Vox Fabula Companion' -DestinationPath $zip -CompressionLevel Optimal
 
 # 5) installer
 $iscc = @(
@@ -42,10 +43,11 @@ $iscc = @(
 if ($iscc) {
     & $iscc /Q "/DMyAppVersion=$version" 'packaging\installer.iss'
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup fallito." }
-    # Lo STESSO installer anche col nome di prima: la 1.2.0 pubblicata (quando
-    # l'app si chiamava "NWN Voce") cerca nella Release solo NWN-Voce-Setup-*.exe.
-    # Va caricato finche' qualcuno puo' avere ancora la 1.2.0.
-    Copy-Item "dist\VoxFabula-Voice-Setup-$version.exe" "dist\NWN-Voce-Setup-$version.exe"
+    # Lo STESSO installer anche coi nomi di prima: le app gia' installate cercano
+    # nella Release solo il loro nome (1.2.1-1.2.x: VoxFabula-Voice-Setup-*.exe,
+    # 1.2.0: NWN-Voce-Setup-*.exe). Vanno caricati finche' qualcuno puo' averle.
+    Copy-Item "dist\VoxFabula-Companion-Setup-$version.exe" "dist\VoxFabula-Voice-Setup-$version.exe"
+    Copy-Item "dist\VoxFabula-Companion-Setup-$version.exe" "dist\NWN-Voce-Setup-$version.exe"
 } else {
     Write-Warning "Inno Setup 6 non trovato: niente installer, solo lo zip."
 }

@@ -279,5 +279,81 @@ class TestDockerfile(unittest.TestCase):
         self.assertTrue(any("net_protocol.py" in s for srcs in copies for s in srcs))
 
 
+
+class CinemaTest(RelayCase):
+    """Video chiesti da uno script (tabella vf_cinema) -> relay -> client -> esito."""
+
+    def chiedi(self, rid, cdkey="KTEST", video="ingresso"):
+        c = sqlite3.connect(self.db)
+        c.execute("CREATE TABLE IF NOT EXISTS vf_cinema (id TEXT PRIMARY KEY, cdkey TEXT, "
+                  "video TEXT, stato INTEGER, esito TEXT, t INTEGER)")
+        c.execute("INSERT INTO vf_cinema VALUES(?,?,?,0,'',?)", (rid, cdkey, video, int(time.time())))
+        c.commit()
+        c.close()
+
+    def riga(self, rid):
+        c = sqlite3.connect(self.db)
+        r = c.execute("SELECT stato, esito FROM vf_cinema WHERE id=?", (rid,)).fetchone()
+        c.close()
+        return r
+
+    def client_cinema(self, player, risposta):
+        ricevuti = []
+        c = RelayClient("127.0.0.1", self.port, player=player)
+
+        def on_video(nome, rid):
+            ricevuti.append((nome, rid))
+            if risposta is not None:
+                threading.Thread(target=lambda: c.send_video_esito(rid, risposta),
+                                 daemon=True).start()
+        c.on_video = on_video
+        c.open()
+        self.clients.append(c)
+        return c, ricevuti
+
+    def test_video_visto(self):
+        c, ricevuti = self.client_cinema("Tester", "visto")
+        self.assertTrue(self.wait_for(lambda: c.connected))
+        self.chiedi("r1")
+        self.assertEqual(self.wait_for(lambda: self.riga("r1") == (2, "visto")) and self.riga("r1"),
+                         (2, "visto"))
+        self.assertEqual(ricevuti, [("ingresso", "r1")])
+
+    def test_solo_al_giocatore_giusto(self):
+        c, ricevuti = self.client_cinema("Amico", "visto")
+        self.assertTrue(self.wait_for(lambda: c.connected))
+        self.chiedi("r2", cdkey="KTEST")              # e' per Tester, non per Amico
+        time.sleep(1.5)
+        self.assertEqual(ricevuti, [])
+        self.assertEqual(self.riga("r2"), (0, ""))
+
+    def test_esito_falso_di_un_altro(self):
+        # Amico prova a chiudere la richiesta di Tester: non deve contare
+        self.chiedi("r3", cdkey="KTEST")
+        c, _ = self.client_cinema("Amico", None)
+        self.assertTrue(self.wait_for(lambda: c.connected))
+        time.sleep(0.8)
+        c.send_video_esito("r3", "visto")
+        time.sleep(0.8)
+        self.assertEqual(self.riga("r3"), (0, ""))
+
+    def test_app_vecchia_assente(self):
+        c = self.connect("Tester")                     # niente on_video: app vecchia
+        self.assertTrue(self.wait_for(lambda: c.connected))
+        self.chiedi("r4")
+        self.assertTrue(self.wait_for(lambda: self.riga("r4") == (2, "assente")),
+                        self.riga("r4"))
+
+    def test_client_caduto_durante_il_video(self):
+        c, ricevuti = self.client_cinema("Tester", None)   # riceve ma non risponde mai
+        self.assertTrue(self.wait_for(lambda: c.connected))
+        self.chiedi("r5")
+        self.assertTrue(self.wait_for(lambda: ricevuti))
+        self.assertEqual(self.riga("r5")[0], 1)
+        c.close()
+        self.assertTrue(self.wait_for(lambda: self.riga("r5") == (2, "disconnesso")),
+                        self.riga("r5"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

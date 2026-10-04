@@ -19,6 +19,15 @@ relay -> client (throttled, full roster for the per-speaker range plugin):
 
 The relay is authoritative for ``server`` and ``area`` so that the Mumble audio
 *context* is identical for every client of the same NWN server.
+
+CINEMA (Companion 1.3+): video a schermo intero chiesti da uno script del server.
+client -> relay, nel hello:  {"hello": .., "cinema": 1}   # so mostrare i video
+relay -> client:             {"video": "<nome>", "id": "<id richiesta>"}
+client -> relay:             {"video_esito": "<id>", "esito": "<esito>"}
+    esito: visto | saltato | errore | mancante | disattivato | occupato
+Un client senza "cinema" nel hello non riceve mai video: il relay risponde
+subito "assente" allo script, che fa entrare il personaggio senza video.
+I client vecchi ignorano i messaggi che non conoscono.
 """
 
 from __future__ import annotations
@@ -32,11 +41,28 @@ PROTO_VERSION = 1
 _IDLE = b'{"idle":true}\n'
 
 
-def encode_hello(player: str, token: str | None = None) -> bytes:
+ESITI_VIDEO = ("visto", "saltato", "errore", "mancante", "disattivato", "occupato")
+
+
+def encode_hello(player: str, token: str | None = None, cinema: bool = False) -> bytes:
     d = {"hello": player}
     if token:
         d["token"] = token
+    if cinema:
+        d["cinema"] = 1
     return (json.dumps(d) + "\n").encode("utf-8")
+
+
+def encode_video(nome: str, rid: str) -> bytes:
+    """relay -> client: mostra il video ``nome`` (richiesta ``rid``)."""
+    return (json.dumps({"video": nome, "id": rid}) + "\n").encode("utf-8")
+
+
+def encode_video_esito(rid: str, esito: str) -> bytes:
+    """client -> relay: com'e' andata la richiesta ``rid``."""
+    if esito not in ESITI_VIDEO:
+        esito = "errore"
+    return (json.dumps({"video_esito": rid, "esito": esito}) + "\n").encode("utf-8")
 
 
 def encode_talk(talking: bool) -> bytes:

@@ -22,12 +22,14 @@
   <div class="app">
     <header>
       <button class="gear" onclick="openSettings()" title="Impostazioni" aria-label="Impostazioni">&#9881;</button>
+      <button class="gear pc" onclick="openPc()" data-i18n-title="pc_open" aria-label="Cosa fa sul tuo PC">&#9432;</button>
       <div class="langbar">
         <button class="lang" data-lang="it" onclick="setLang('it')">IT</button>
         <button class="lang" data-lang="en" onclick="setLang('en')">EN</button>
       </div>
       <img class="brand-logo" src="logo-animato.webp" alt="Vox Fabula" width="440" height="388">
-      <div class="brand-sub">VOICE</div>
+      <div class="brand-sub">COMPANION</div>
+      <div class="ver-badge" id="ver-badge" title=""></div>
       <div class="tag" data-i18n="tag"></div>
     </header>
 
@@ -62,6 +64,37 @@
     </div>
 
     <footer><span data-i18n="footer"></span> <span id="ver"></span></footer>
+
+    <div id="pc-view" class="settings-view" style="display:none">
+      <div class="card">
+        <div class="settings-title" data-i18n="pc_title"></div>
+        <div class="pc-intro" data-i18n="pc_intro"></div>
+        <div class="pc-sec">
+          <div class="pc-h" data-i18n="pc_voice_h"></div>
+          <ul><li data-i18n="pc_voice_1"></li><li data-i18n="pc_voice_2"></li><li data-i18n="pc_voice_3"></li></ul>
+        </div>
+        <div class="pc-sec">
+          <div class="pc-h" data-i18n="pc_cine_h"></div>
+          <ul><li data-i18n="pc_cine_1"></li><li data-i18n="pc_cine_2"></li><li data-i18n="pc_cine_3"></li><li data-i18n="pc_cine_4"></li></ul>
+          <div class="field">
+            <label class="check"><input id="pc-video" type="checkbox" onchange="saveVideo()"> <span data-i18n="pc_video_toggle"></span></label>
+            <div class="set-hint" data-i18n="pc_video_hint"></div>
+          </div>
+        </div>
+        <div class="pc-sec">
+          <div class="pc-h" data-i18n="pc_never_h"></div>
+          <ul><li data-i18n="pc_never_1"></li><li data-i18n="pc_never_2"></li><li data-i18n="pc_never_3"></li><li data-i18n="pc_never_4"></li></ul>
+        </div>
+        <div class="pc-sec">
+          <div class="pc-h" data-i18n="pc_log_h"></div>
+          <div id="pc-log" class="log pc-log"></div>
+          <div class="set-hint" data-i18n="pc_log_hint"></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-stop" onclick="closePc()" data-i18n="set_back"></button>
+        </div>
+      </div>
+    </div>
 
     <div id="settings-view" class="settings-view" style="display:none">
       <div class="card">
@@ -115,14 +148,14 @@
   <script>
     const I18N = {
       it: {
-        tag: "voce di prossimità per Neverwinter Nights",
+        tag: "voce di prossimità e cinema per Neverwinter Nights",
         label_name: "Il tuo nome (uguale al nome account NWN)", ph_name: "es. Hiruken",
         btn_connect: "Connetti", btn_stop: "Ferma",
         status_title: "Stato",
         footer: "Apri NWN a parte ed entra nel server.",
         err_name: "Scrivi il tuo nome.", err_server: "Indirizzo non valido.",
         client_start: "Connessione a {host} come {name}…",
-        mumble_missing: "Manca Mumble nel pacchetto: reinstalla Vox Fabula Voice.",
+        mumble_missing: "Manca Mumble nel pacchetto: reinstalla Vox Fabula Companion.",
         config_ok: "Mumble preparato (impostazioni separate da qualsiasi altro Mumble).",
         config_err: "Non riesco a preparare Mumble: {err}",
         mumble_launched: "Mumble avviato e collegato a {host} (icona nella barra in basso).",
@@ -164,17 +197,50 @@
         update_ready: "Aggiornamento verificato: l'app si riapre da sola tra un attimo.",
         update_failed: "Aggiornamento non riuscito: {err}",
         update_page_opened: "Ho aperto nel browser la pagina della nuova versione.",
-        update_required: "Prima di collegarti devi aggiornare alla versione {version}."
+        update_required: "Prima di collegarti devi aggiornare alla versione {version}.",
+        pc_open: "Cosa fa questo programma sul tuo PC",
+        ver_badge: "versione {v}",
+        pc_title: "Cosa fa sul tuo PC",
+        pc_intro: "Vox Fabula Companion lavora accanto a Neverwinter Nights. Qui c'è tutto quello che fa, e il registro di quello che ha fatto.",
+        pc_voice_h: "Voce",
+        pc_voice_1: "Avvia un Mumble suo, con impostazioni sue: un altro Mumble sul PC non viene né chiuso né modificato.",
+        pc_voice_2: "Riceve dal server la posizione dei personaggi, per regolare il volume di chi parla.",
+        pc_voice_3: "Si collega ai server di Vox Fabula (voice.voxfabula.it) e a GitHub, solo per controllare se c'è una versione nuova.",
+        pc_cine_h: "Cinema",
+        pc_cine_1: "Mostra un video sopra il gioco solo quando lo chiede il server (l'ingresso in un evento, un finale). Esc lo salta sempre.",
+        pc_cine_2: "I video arrivano solo da nwsync.voxfabula.it, ognuno controllato con la sua impronta, e stanno nella cartella dell'app.",
+        pc_cine_3: "Legge le impostazioni grafiche di NWN (settings.tml) solo per sapere se giochi in finestra o a schermo intero.",
+        pc_cine_4: "Per mostrare il video porta la sua finestra davanti a NWN e alla fine ridà il gioco a te.",
+        pc_video_toggle: "Mostra i video del server",
+        pc_video_hint: "Spento: il server ti fa entrare negli eventi senza video.",
+        pc_never_h: "Cosa non fa mai",
+        pc_never_1: "Non legge i tuoi file e non registra lo schermo. Della tastiera, Mumble guarda solo il tasto per parlare.",
+        pc_never_2: "Non entra nel processo di NWN e non modifica il gioco.",
+        pc_never_3: "Non installa niente nel sistema e non chiede di essere amministratore.",
+        pc_never_4: "Non manda dati a nessuno oltre ai server di Vox Fabula: nome, voce e l'esito dei video.",
+        pc_log_h: "Registro attività",
+        pc_log_hint: "Ogni video mostrato, saltato o scaricato finisce qui, con l'ora.",
+        pc_log_empty: "Ancora niente.",
+        video_inizio: "Il server ha avviato il video «{video}».",
+        video_esito: "Video «{video}»: {esito}.",
+        video_rifiutato: "Video «{video}» non mostrato: hai spento i video del server.",
+        video_mancante: "Video «{video}» non presente sul PC: entri senza video.",
+        video_scaricato: "Scaricato il video «{video}» ({mb} MB).",
+        video_tolto: "Tolto il video «{video}»: il server non lo usa più.",
+        video_interruttore: "Video del server: {acceso}.",
+        es_visto: "visto", es_saltato: "saltato", es_errore: "non riuscito", es_mancante: "mancante",
+        es_disattivato: "spento da te", es_occupato: "un altro video era in corso",
+        on_1: "accesi", on_0: "spenti"
       },
       en: {
-        tag: "proximity voice for Neverwinter Nights",
+        tag: "proximity voice and cinema for Neverwinter Nights",
         label_name: "Your name (same as your NWN account name)", ph_name: "e.g. Hiruken",
         btn_connect: "Connect", btn_stop: "Stop",
         status_title: "Status",
         footer: "Open NWN separately and join the server.",
         err_name: "Enter your name.", err_server: "Invalid address.",
         client_start: "Connecting to {host} as {name}…",
-        mumble_missing: "Mumble is missing from the package: reinstall Vox Fabula Voice.",
+        mumble_missing: "Mumble is missing from the package: reinstall Vox Fabula Companion.",
         config_ok: "Mumble ready (settings kept apart from any other Mumble).",
         config_err: "Could not set up Mumble: {err}",
         mumble_launched: "Mumble started and connected to {host} (icon in the taskbar).",
@@ -216,13 +282,47 @@
         update_ready: "Update verified: the app will reopen in a moment.",
         update_failed: "Update failed: {err}",
         update_page_opened: "Opened the new version's page in your browser.",
-        update_required: "Update to version {version} before connecting."
+        update_required: "Update to version {version} before connecting.",
+        pc_open: "What this program does on your PC",
+        ver_badge: "version {v}",
+        pc_title: "What it does on your PC",
+        pc_intro: "Vox Fabula Companion works next to Neverwinter Nights. Here is everything it does, and a log of what it did.",
+        pc_voice_h: "Voice",
+        pc_voice_1: "Starts its own Mumble with its own settings: any other Mumble on your PC is neither closed nor changed.",
+        pc_voice_2: "Receives your characters' positions from the server, to set the volume of whoever is talking.",
+        pc_voice_3: "Connects to the Vox Fabula servers (voice.voxfabula.it) and to GitHub, only to check for a new version.",
+        pc_cine_h: "Cinema",
+        pc_cine_1: "Shows a video over the game only when the server asks for it (entering an event, an ending). Esc always skips it.",
+        pc_cine_2: "Videos come only from nwsync.voxfabula.it, each checked against its fingerprint, and live in the app's folder.",
+        pc_cine_3: "Reads NWN's graphics settings (settings.tml) only to know whether you play windowed or fullscreen.",
+        pc_cine_4: "To show a video it brings its window in front of NWN, and gives the game back to you at the end.",
+        pc_video_toggle: "Show server videos",
+        pc_video_hint: "Off: the server lets you into events without a video.",
+        pc_never_h: "What it never does",
+        pc_never_1: "It doesn't read your files or record your screen. Of your keyboard, Mumble only watches the push-to-talk key.",
+        pc_never_2: "It doesn't get inside the NWN process and doesn't modify the game.",
+        pc_never_3: "It installs nothing in the system and never asks for administrator rights.",
+        pc_never_4: "It sends no data to anyone but the Vox Fabula servers: your name, your voice and how videos went.",
+        pc_log_h: "Activity log",
+        pc_log_hint: "Every video shown, skipped or downloaded ends up here, with the time.",
+        pc_log_empty: "Nothing yet.",
+        video_inizio: "The server started the video “{video}”.",
+        video_esito: "Video “{video}”: {esito}.",
+        video_rifiutato: "Video “{video}” not shown: you turned server videos off.",
+        video_mancante: "Video “{video}” is not on this PC: you go in without it.",
+        video_scaricato: "Downloaded the video “{video}” ({mb} MB).",
+        video_tolto: "Removed the video “{video}”: the server no longer uses it.",
+        video_interruttore: "Server videos: {acceso}.",
+        es_visto: "watched", es_saltato: "skipped", es_errore: "failed", es_mancante: "missing",
+        es_disattivato: "turned off by you", es_occupato: "another video was playing",
+        on_1: "on", on_0: "off"
       }
     };
     const WARN = ["mumble_missing", "config_err", "relay_unreachable", "relay_rejected",
                   "mumble_closed", "bridge_error", "fatal", "update_required"];
 
     let lang = "it";
+    let appVer = "";         // versione dell'app, per il riquadro sotto il logo
     let running = false;
     let upd = null;          // aggiornamento disponibile {version, notes, mandatory, auto}
 
@@ -271,6 +371,9 @@
       document.documentElement.lang = lang;
       document.querySelectorAll("[data-i18n]").forEach(function (el) { el.textContent = tr(el.getAttribute("data-i18n")); });
       document.querySelectorAll("[data-ph]").forEach(function (el) { el.setAttribute("placeholder", tr(el.getAttribute("data-ph"))); });
+      document.querySelectorAll("[data-i18n-title]").forEach(function (el) { el.setAttribute("title", tr(el.getAttribute("data-i18n-title"))); });
+      renderPcLog();
+      document.getElementById("ver-badge").textContent = appVer ? tr("ver_badge", { v: appVer }) : "";
       document.querySelectorAll(".lang").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-lang") === lang); });
       renderUpdate();
       renderVoice();
@@ -309,6 +412,7 @@
       if (key === "window_minimized") { document.body.classList.add("paused"); return; }
       if (key === "window_restored") { document.body.classList.remove("paused"); return; }
       if (handleUpdateStatus(key, data)) return;
+      if (key === "attivita") { addActivity(data); return; }
       const log = document.getElementById("log");
       const line = document.createElement("div");
       line.className = "log-line" + (WARN.indexOf(key) >= 0 ? " warn" : "");
@@ -411,6 +515,62 @@
       renderVoice();
     }
 
+    /* ---- "Cosa fa sul tuo PC": registro attivita' e interruttore dei video ---- */
+    let activity = [];       // [{ora, voce, dati}]
+    function activityText(a) {
+      const d = Object.assign({}, a.dati);
+      if (d.esito !== undefined) d.esito = tr("es_" + d.esito);
+      if (d.acceso !== undefined) d.acceso = tr("on_" + d.acceso);
+      return a.ora + "  " + tr(a.voce, d);
+    }
+    function parseActivityLine(riga) {
+      // "04/10 22:53  video_esito  video=ingresso  esito=saltato" (scritta da regia.py)
+      const p = riga.split("  ").filter(function (x) { return x !== ""; });
+      const dati = {};
+      p.slice(2).forEach(function (kv) { const i = kv.indexOf("="); if (i > 0) dati[kv.slice(0, i)] = kv.slice(i + 1); });
+      return { ora: p[0] || "", voce: p[1] || "", dati: dati };
+    }
+    function renderPcLog() {
+      const box = document.getElementById("pc-log");
+      if (!box) return;
+      box.innerHTML = "";
+      if (!activity.length) {
+        const e = document.createElement("div"); e.className = "log-line"; e.textContent = tr("pc_log_empty");
+        box.appendChild(e); return;
+      }
+      activity.slice().reverse().forEach(function (a) {
+        const l = document.createElement("div"); l.className = "log-line"; l.textContent = activityText(a);
+        box.appendChild(l);
+      });
+    }
+    function addActivity(data) {
+      const a = { ora: data.ora, voce: data.voce, dati: Object.assign({}, data) };
+      delete a.dati.ora; delete a.dati.voce;
+      activity.push(a);
+      if (activity.length > 200) activity.shift();
+      renderPcLog();
+      // anche nello Stato, cosi' chi non apre il pannello lo vede lo stesso
+      const log = document.getElementById("log");
+      const line = document.createElement("div");
+      line.className = "log-line"; line.textContent = activityText(a);
+      log.appendChild(line); log.scrollTop = log.scrollHeight;
+    }
+    async function openPc() {
+      try {
+        const r = await window.pywebview.api.get_attivita();
+        if (r) {
+          activity = (r.righe || []).map(parseActivityLine);
+          document.getElementById("pc-video").checked = r.video_server !== false;
+        }
+      } catch (e) {}
+      renderPcLog();
+      document.getElementById("pc-view").style.display = "";
+    }
+    function closePc() { document.getElementById("pc-view").style.display = "none"; }
+    async function saveVideo() {
+      try { await window.pywebview.api.save_video_server(document.getElementById("pc-video").checked); } catch (e) {}
+    }
+
     function openSettings() {
       document.getElementById("set-name").value = document.getElementById("name").value;
       loadDevices();
@@ -478,7 +638,10 @@
           if (s.name) document.getElementById("name").value = s.name;
           if (s.default_server) document.getElementById("set-server").placeholder = s.default_server;
           if (s.lang) l = s.lang;
-          if (s.version) document.getElementById("ver").textContent = "v" + s.version;
+          if (s.version) {
+            document.getElementById("ver").textContent = "v" + s.version;
+            appVer = s.version;
+          }
         }
       } catch (e) {}
       if (!l) l = (navigator.language || "it").toLowerCase().indexOf("it") === 0 ? "it" : "en";

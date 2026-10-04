@@ -33,6 +33,17 @@ from .talk_listener import TalkListener
 from .fantoccio import EchoBot
 
 
+# Video chiesti dagli script del modulo (vf_cinema.nss), uno per riga:
+#   stato 0 = chiesto dallo script, 1 = inviato al client, 2 = concluso (esito scritto).
+# Esiti oltre a quelli del client (net_protocol.ESITI_VIDEO): "assente" (nessun client
+# capace di video collegato) e "disconnesso" (client caduto durante il video).
+_CINEMA_TABLE = ("CREATE TABLE IF NOT EXISTS vf_cinema (id TEXT PRIMARY KEY, cdkey TEXT, "
+                 "video TEXT, stato INTEGER, esito TEXT, t INTEGER);")
+CINEMA_PERIOD = 0.5          # ogni quanto il relay guarda se ci sono video da mandare
+CINEMA_RESOLVE = 5.0         # ogni quanto ricontrolla nome client -> cdkey
+CINEMA_RETRY_FOR = 60.0      # per quanto si riprova a scrivere un esito se il DB e' occupato
+
+
 def _log(msg: str) -> None:
     t = time.time()
     stamp = time.strftime('%H:%M:%S', time.localtime(t)) + f".{int((t % 1) * 1000):03d}"
@@ -63,6 +74,7 @@ class _TalkWriter:
             c.execute("CREATE TABLE IF NOT EXISTS vc_client "
                       "(cdkey TEXT PRIMARY KEY, talking INTEGER, "
                       "range_request INTEGER, seq INTEGER);")
+            c.execute(_CINEMA_TABLE)
             c.commit()
             self._conn = c
             return True
@@ -120,6 +132,52 @@ class _TalkWriter:
                     pass
                 self._conn = None               # drop & reconnect next time
 
+    # ---- cinema: video chiesti dagli script (tabella vf_cinema, vedi _CINEMA_TABLE) ----
+    def _cinema_do(self, fn, default=None):
+        """Esegue ``fn(conn)`` col lucchetto; ogni errore del DB = ``default`` (mai un crash)."""
+        with self._lock:
+            if not self._connect():
+                return default
+            try:
+                out = fn(self._conn)
+                self._conn.commit()
+                return out
+            except sqlite3.Error:
+                try:
+                    self._conn.close()
+                except sqlite3.Error:
+                    pass
+                self._conn = None
+                return default
+
+    def cdkey_of(self, player: str):
+        if not player:
+            return None
+        return self._cinema_do(lambda c: self._resolve_cdkey(player))
+
+    def cinema_take(self, cdkey: str) -> list:
+        """Le richieste nuove (stato 0) di questo giocatore, segnate come inviate (1)."""
+        def fn(c):
+            rows = c.execute("SELECT id, video FROM vf_cinema WHERE cdkey=? AND stato=0 "
+                             "ORDER BY t", (cdkey,)).fetchall()
+            for rid, _v in rows:
+                c.execute("UPDATE vf_cinema SET stato=1 WHERE id=? AND stato=0", (rid,))
+            return [(str(r), str(v)) for r, v in rows]
+        return self._cinema_do(fn, [])
+
+    def cinema_close(self, cdkey: str, rid: str, esito: str):
+        """Esito di una richiesta: solo il client del giocatore giusto puo' chiuderla.
+        True = chiusa; False = non sua o gia' chiusa; None = DB occupato (riprovare)."""
+        return self._cinema_do(lambda c: c.execute(
+            "UPDATE vf_cinema SET stato=2, esito=? WHERE id=? AND cdkey=? AND stato<2",
+            (esito, rid, cdkey)).rowcount > 0, None)
+
+    def cinema_drop(self, cdkey: str, esito: str, only_sent: bool) -> None:
+        """Chiude in blocco le richieste aperte di un giocatore (client assente o caduto)."""
+        cond = "stato=1" if only_sent else "stato<2"
+        self._cinema_do(lambda c: c.execute(
+            f"UPDATE vf_cinema SET stato=2, esito=? WHERE cdkey=? AND {cond}", (esito, cdkey)))
+
     def close(self) -> None:
         with self._lock:
             if self._conn is not None:
@@ -155,6 +213,11 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
             conn.sendall(proto.encode_error("no player"))
             return
 
+        cinema_ok = bool(msg.get("cinema"))       # Companion 1.3+: sa mostrare i video
+        cine = {"cdkey": None, "resolved_at": -1e9, "last": 0.0,
+                "pend": [], "lock": threading.Lock()}   # esiti da scrivere: (rid, esito, t)
+        send_lock = threading.Lock()              # il lettore risponde anche lui sul socket
+
         prov = SqlFileProvider(db_path=db_path, player=player, server=server_id)
         prov.open()
         conn.settimeout(None)
@@ -168,16 +231,70 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
         # potrebbe ancora inviare: il vecchio rilevatore mic del client ignorava il
         # mute di Mumble (icona accesa anche da mutati) ed era in conflitto col bot.
         # Continuiamo solo a SVUOTARE il socket per non farlo intasare.
+        # Unica eccezione: l'esito di un video ({"video_esito": id, "esito": ..}).
         def _reader():
             try:
                 while not stop.is_set():
                     line = stream.readline(65536)   # cap per riga: niente buffer illimitato
                     if not line:
                         break
-                    # volutamente ignorato (vedi commento sopra)
+                    if b"video_esito" not in line or writer is None:
+                        continue                    # 'talk' & co.: volutamente ignorati
+                    try:
+                        m = proto.decode_line(line)
+                    except ValueError:
+                        continue
+                    if isinstance(m, dict):
+                        esito = str(m.get("esito", ""))
+                        if esito not in proto.ESITI_VIDEO:
+                            esito = "errore"
+                        with cine["lock"]:          # lo scrive _cinema_tick (anche riprovando)
+                            cine["pend"].append((str(m.get("video_esito", "")), esito,
+                                                 time.monotonic()))
             except OSError:
                 pass
         threading.Thread(target=_reader, daemon=True).start()
+
+        def _cinema_esiti(now: float) -> None:
+            """Scrive gli esiti arrivati dal client. Se il DB e' occupato (lo usa anche
+            nwserver) l'esito resta in coda e si riprova al giro dopo, per un minuto."""
+            cd = cine["cdkey"]
+            with cine["lock"]:
+                pend, cine["pend"] = cine["pend"], []
+            resto = []
+            for rid, esito, t0 in pend:
+                ok = writer.cinema_close(cd, rid, esito) if cd else None
+                if ok:
+                    _log(f"{player!r}: video {rid!r} -> {esito}")
+                elif ok is False:
+                    _log(f"{player!r}: esito per {rid!r} ignorato (non suo o gia' chiuso)")
+                elif now - t0 < CINEMA_RETRY_FOR:
+                    resto.append((rid, esito, t0))
+                else:
+                    _log(f"{player!r}: esito per {rid!r} perso (DB occupato da {CINEMA_RETRY_FOR:.0f} s)")
+            if resto:
+                with cine["lock"]:
+                    cine["pend"] = resto + cine["pend"]
+
+        def _cinema_tick(now: float) -> None:
+            if writer is None or now - cine["last"] < CINEMA_PERIOD:
+                return
+            cine["last"] = now
+            if cine["pend"]:
+                _cinema_esiti(now)
+            if now - cine["resolved_at"] >= CINEMA_RESOLVE or not cine["cdkey"]:
+                cine["resolved_at"] = now
+                cine["cdkey"] = writer.cdkey_of(player) or cine["cdkey"]
+            cd = cine["cdkey"]
+            if not cd:
+                return
+            for rid, video in writer.cinema_take(cd):
+                if cinema_ok:
+                    with send_lock:
+                        conn.sendall(proto.encode_video(video, rid))
+                    _log(f"{player!r}: video {video!r} ({rid})")
+                else:
+                    writer.cinema_close(cd, rid, "assente")   # app vecchia: niente video
 
         # TEST fantoccio: lo PIANTIAMO una volta sola, dove ti vediamo la prima
         # volta (il tuo punto di spawn), e li' RESTA FERMO. Sei TU che ti allontani:
@@ -188,9 +305,11 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
         # and disconnects are detected promptly via a failed send.
         while not stop.is_set():
             st = prov.poll()
-            conn.sendall(proto.encode_state(st) if st is not None
-                         else proto.encode_idle())
+            with send_lock:
+                conn.sendall(proto.encode_state(st) if st is not None
+                             else proto.encode_idle())
             now = time.monotonic()
+            _cinema_tick(now)
             if now - last_roster >= roster_period:
                 last_roster = now
                 roster = prov.read_roster()
@@ -211,13 +330,21 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
                     roster = list(roster) + [
                         (fant["name"], a_area, a_x, a_y, a_z, fant["mode"])]
                 if roster:
-                    conn.sendall(proto.encode_roster(roster))
+                    with send_lock:
+                        conn.sendall(proto.encode_roster(roster))
             time.sleep(period)
     except (OSError, ValueError, KeyError):
         pass
     finally:
         # NB: non tocchiamo piu' 'talking' alla disconnessione del client: lo gestiscono
         # il bot (spegne all'uscita da Mumble) e lo script in gioco (logout del PG).
+        # Un video in corso pero' non finira' mai: lo script deve saperlo subito.
+        try:
+            cd = cine["cdkey"] if "cine" in locals() else None
+            if cd and writer is not None:
+                writer.cinema_drop(cd, "disconnesso", only_sent=True)
+        except Exception:
+            pass
         if prov is not None:
             try:
                 prov.close()                 # evita leak dell'handle SQLite a ogni disconnessione

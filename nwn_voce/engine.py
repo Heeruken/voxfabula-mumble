@@ -35,8 +35,9 @@ SW_SHOWMINNOACTIVE = 7      # minimizzato, senza rubare il focus a NWN
 
 
 class Engine:
-    def __init__(self, emit: Optional[Callable[..., None]] = None) -> None:
+    def __init__(self, emit: Optional[Callable[..., None]] = None, regia=None) -> None:
         self.emit = emit or (lambda key, **data: None)
+        self.regia = regia            # video chiesti dal server (regia.py); None = niente video
         self._lock = threading.RLock()
         self._gen = 0
         self._mumble: Optional[subprocess.Popen] = None
@@ -94,6 +95,11 @@ class Engine:
             self.emit("mumble_launched", host=host)
 
             client = RelayClient(host=host, port=RELAY_PORT, player=name)
+            if self.regia is not None:
+                regia = self.regia
+                client.on_video = lambda nome, rid: regia.richiesta(
+                    nome, rid, client.send_video_esito)
+                threading.Thread(target=self._videoteca, name="videoteca", daemon=True).start()
             client.open()
             stop = threading.Event()
             self._client, self._stop_evt = client, stop
@@ -111,6 +117,14 @@ class Engine:
                 self.emit("stopped")
 
     # -------------------------------------------------------------- interni
+    def _videoteca(self) -> None:
+        """Scarica i video del server che mancano (una volta per Connetti)."""
+        try:
+            from . import videoteca
+            videoteca.aggiorna(self.regia.registro)
+        except Exception:  # noqa: BLE001 -- i video non devono mai fermare la voce
+            log.exception("videoteca")
+
     @staticmethod
     def _stash_crash_dump() -> None:
         """Se Mumble e' crashato in passato ha lasciato mumble.dmp: al prossimo avvio

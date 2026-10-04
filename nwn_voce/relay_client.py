@@ -27,12 +27,17 @@ log = logging.getLogger(__name__)
 
 class RelayClient:
     def __init__(self, host: str, port: int = 27890, player: str = "",
-                 token: Optional[str] = None, stale_after: float = 2.0) -> None:
+                 token: Optional[str] = None, stale_after: float = 2.0,
+                 on_video=None) -> None:
         self.host = host
         self.port = port
         self.player = player
         self.token = token
         self.stale_after = stale_after
+        # on_video(nome, id): il server chiede un video. Se c'e', il hello dice al relay
+        # che sappiamo mostrarli; deve ritornare subito (il lavoro va in un altro thread).
+        self.on_video = on_video
+        self._send_lock = threading.Lock()
         self._lock = threading.Lock()
         self._latest: Optional[PlayerState] = None
         self._last_recv = 0.0
@@ -85,6 +90,20 @@ class RelayClient:
         with self._lock:
             return list(self._roster)
 
+    def send_video_esito(self, rid: str, esito: str) -> bool:
+        """Manda l'esito di un video al relay. False se in questo momento non siamo
+        collegati (lo script in gioco ha comunque i suoi tempi massimi)."""
+        with self._lock:
+            sock = self._sock
+        if sock is None:
+            return False
+        try:
+            with self._send_lock:
+                sock.sendall(proto.encode_video_esito(rid, esito))
+            return True
+        except OSError:
+            return False
+
     # ---- rete ----
     def _run(self) -> None:
         backoff = 1.0
@@ -97,7 +116,9 @@ class RelayClient:
                     self._connected = True
                 log.info("relay %s:%s connesso", self.host, self.port)
                 backoff = 1.0
-                sock.sendall(proto.encode_hello(self.player, self.token))
+                with self._send_lock:
+                    sock.sendall(proto.encode_hello(self.player, self.token,
+                                                    cinema=self.on_video is not None))
                 for line in sock.makefile("rb"):
                     if self._stop.is_set():
                         break
@@ -114,6 +135,12 @@ class RelayClient:
                         r = proto.roster_from_msg(msg)
                         with self._lock:
                             self._roster = r
+                    elif "video" in msg:
+                        if self.on_video is not None:
+                            try:
+                                self.on_video(str(msg["video"]), str(msg.get("id", "")))
+                            except Exception:  # noqa: BLE001 -- mai far cadere la voce
+                                log.exception("richiesta video non gestita")
                     elif "error" in msg:
                         log.warning("il relay ci ha rifiutato: %r", msg["error"])
                         with self._lock:

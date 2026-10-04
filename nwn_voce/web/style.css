@@ -308,3 +308,17 @@ body.paused .ambient, body.paused .ambient *, body.paused .ambient::before, body
 /* casella "Uso le casse": la casella accanto al testo, non sopra come le altre etichette */
 .field label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .field label.check input { width: 18px; height: 18px; padding: 0; margin: 0; box-shadow: none; accent-color: var(--crystal); flex: none; }
+
+/* ---------- "Cosa fa sul tuo PC" ---------- */
+.gear.pc { left: 40px; font-size: 17px; }
+.pc-intro { font-size: 14.5px; line-height: 1.45; color: var(--ink-soft); margin-bottom: 12px; }
+.pc-sec { margin-bottom: 14px; }
+.pc-h { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: 0.06em;
+  color: var(--title); margin-bottom: 4px; }
+.pc-sec ul { margin: 0 0 8px; padding-left: 20px; font-size: 14px; line-height: 1.45; color: var(--ink); }
+.pc-sec li { margin-bottom: 3px; }
+.pc-log { max-height: 180px; min-height: 60px; font-size: 13.5px; }
+.ver-badge { display: inline-block; margin-top: 6px; padding: 1px 10px; border-radius: 10px;
+  font-family: var(--font-sc); font-size: 12px; letter-spacing: 0.12em; color: #cfd3ec;
+  background: rgba(14, 11, 34, 0.55); border: 1px solid rgba(207, 211, 236, 0.3); }
+.ver-badge:empty { display: none; }

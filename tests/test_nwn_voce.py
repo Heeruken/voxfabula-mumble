@@ -220,12 +220,13 @@ class TempAppData(unittest.TestCase):
 
 
 class TestRenameCarryOver(TempAppData):
-    """Col nome nuovo ("Vox Fabula Voice") le impostazioni della versione di prova
-    ("NWN Voce") vengono copiate, una volta sola, e la cartella vecchia resta."""
+    """Col nome nuovo ("Vox Fabula Companion") le impostazioni del nome vecchio
+    ("Vox Fabula Voice", prima ancora "NWN Voce") vengono copiate, una volta sola,
+    e la cartella vecchia resta."""
 
     def test_settings_copied_once(self):
-        from nwn_voce import OLD_APP_NAME, paths, settings
-        old = os.path.join(self._tmp.name, OLD_APP_NAME)
+        from nwn_voce import OLD_APP_NAMES, paths, settings
+        old = os.path.join(self._tmp.name, OLD_APP_NAMES[0])
         os.makedirs(old)
         with open(os.path.join(old, "settings.json"), "w", encoding="utf-8") as fh:
             json.dump({"name": "Hiruken", "host": "127.0.0.1"}, fh)
@@ -238,6 +239,14 @@ class TestRenameCarryOver(TempAppData):
         with open(os.path.join(old, "settings.json"), "w", encoding="utf-8") as fh:
             json.dump({"name": "Altro"}, fh)
         self.assertEqual(settings.load().get("name"), "Hiruken")
+
+    def test_most_recent_old_name_wins(self):
+        from nwn_voce import OLD_APP_NAMES, settings
+        for nome, chi in zip(OLD_APP_NAMES, ("Recente", "Vecchio")):
+            os.makedirs(os.path.join(self._tmp.name, nome))
+            with open(os.path.join(self._tmp.name, nome, "settings.json"), "w", encoding="utf-8") as fh:
+                json.dump({"name": chi}, fh)
+        self.assertEqual(settings.load().get("name"), "Recente")
 
     def test_fresh_install_without_old_folder(self):
         from nwn_voce import settings

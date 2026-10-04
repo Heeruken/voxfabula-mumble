@@ -15,7 +15,7 @@ import os
 import shutil
 import sys
 
-from . import APP_NAME, OLD_APP_NAME
+from . import APP_NAME, OLD_APP_NAMES
 
 # file da riportare dalla cartella col vecchio nome dell'app (nome, server, tasto...)
 _CARRY_OVER = ("settings.json", "mumble_settings.json", "mumble.sqlite")
@@ -26,13 +26,16 @@ def data_dir() -> str:
     d = os.path.join(base, APP_NAME)
     if not os.path.isdir(d):
         os.makedirs(d, exist_ok=True)
-        _carry_over(os.path.join(base, OLD_APP_NAME), d)
+        for old in OLD_APP_NAMES:                      # il nome piu' recente che c'e'
+            if os.path.isdir(os.path.join(base, old)):
+                _carry_over(os.path.join(base, old), d)
+                break
     return d
 
 
 def _carry_over(old: str, new: str) -> None:
     """Prima apertura col nome nuovo: copia (non sposta) le impostazioni della
-    versione di prova "NWN Voce", cosi' nessuno deve rifarle."""
+    versione col nome vecchio, cosi' nessuno deve rifarle."""
     for name in _CARRY_OVER:
         src = os.path.join(old, name)
         if os.path.isfile(src):

@@ -1,4 +1,4 @@
-"""Vox Fabula Voice - la finestra (pywebview + interfaccia HTML).
+"""Vox Fabula Companion - la finestra (pywebview + interfaccia HTML).
 
 Regola anti-crash: la finestra si tocca SOLO dal suo thread. Il motore gira nei
 thread e si limita ad ACCODARE chiavi di stato; la pagina le legge con poll().
@@ -15,7 +15,7 @@ import traceback
 
 import webbrowser
 
-from . import APP_NAME, DEFAULT_SERVER, __version__, paths, settings, updater, winproc
+from . import APP_NAME, DEFAULT_SERVER, __version__, paths, regia, settings, updater, winproc
 from .audio_devices import list_audio_devices
 from .engine import Engine
 
@@ -68,7 +68,8 @@ class Api:
         # stesso avvio la blocca: niente pagina collegata, niente chiusura.
         self._pending_installer: str | None = None   # lanciato da main() dopo la chiusura
         self._window = None
-        self._engine = Engine(emit=self._queue)
+        self._registro = regia.Registro(self._queue)
+        self._engine = Engine(emit=self._queue, regia=regia.Regia(self._registro))
         threading.Thread(target=self._load_devices, daemon=True).start()
 
     def _load_devices(self) -> None:
@@ -136,6 +137,17 @@ class Api:
     def save_speakers(self, on) -> dict:
         """"Uso le casse, non le cuffie": riaccende la cancellazione dell'eco (dal prossimo Connetti)."""
         settings.update(speakers=bool(on))
+        return {"ok": True}
+
+    # ---- trasparenza: cosa fa l'app sul PC ----
+    def get_attivita(self) -> dict:
+        """Registro attivita' (ultime righe) e stato dell'interruttore dei video."""
+        return {"righe": self._registro.righe(), "video_server": regia.video_attivi()}
+
+    def save_video_server(self, on) -> dict:
+        """Interruttore "Video del server": spento = il server fa entrare senza video."""
+        settings.update(video_server=bool(on))
+        self._registro.scrivi("video_interruttore", acceso=1 if on else 0)
         return {"ok": True}
 
     def save_lang(self, lang) -> bool:
