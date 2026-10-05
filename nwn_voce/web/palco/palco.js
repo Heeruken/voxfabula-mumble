@@ -137,12 +137,17 @@ function ripulisci() {
   $('carica').hidden = true;
 }
 
+const USCITA = 350;           // ms di dissolvenza (come USCITA in palco.py e palco.css)
 let finendo = null;
 function fine() {
   if (finendo) return finendo;
-  ripulisci();
-  // un attimo per la dissolvenza, poi di nuovo in attesa (inizio() manda "pronto" all'app)
-  finendo = new Promise(r => setTimeout(r, 50)).then(() => { finendo = null; chiusa = false; avvia(); });
+  // la scena sfuma (il gioco e' gia' tornato attivo sotto), poi via tutto e di nuovo in
+  // attesa (inizio() manda "pronto" all'app)
+  document.body.classList.remove('in-scena');
+  finendo = new Promise(r => setTimeout(r, USCITA)).then(() => {
+    ripulisci();
+    finendo = null; chiusa = false; avvia();
+  });
   return finendo;
 }
 

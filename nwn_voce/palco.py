@@ -61,6 +61,7 @@ FUORI = -32000               # dove sta la finestra dell'overlay quando non c'e'
 # Le pagine si servono sempre dalla stessa porta: stessa origine a ogni avvio, cosi' la cache di
 # WebView2 (JavaScript gia' compilato, three.js compreso) vale anche la volta dopo.
 PORTA_PAGINE = 47913
+USCITA = 0.35                # secondi di dissolvenza a fine scena (come palco.css): NWN e' gia' sotto
 
 
 def cartella_oggetti() -> str:
@@ -521,10 +522,18 @@ def _overlay(porta: int, segreto: str) -> int:
 
     def nascondi(dopo_scena: bool = False) -> None:
         """Niente scena: finestra nascosta e fuori schermo.
-        Dopo una scena il gioco torna SEMPRE davanti (e torna su se l'avevamo ridotto a icona):
-        nascondendo la nostra finestra Windows attiva la successiva, che in schermo intero senza
-        bordi spesso non e' NWN ma Steam o il desktop. Senza scena (pywebview l'ha mostrata da
-        sola) si restituisce il primo piano solo se l'avevamo preso noi."""
+        Dopo una scena il gioco torna SEMPRE davanti (e torna su se l'avevamo ridotto a icona),
+        e PRIMA di nascondere la nostra finestra: lei e' "sempre in primo piano" e lo copre
+        ancora mentre sfuma, cosi' NWN ha il tempo di ridisegnarsi e non si vede mai il desktop
+        (nascondendo per prima la nostra, Windows attiva la successiva: spesso Steam o il
+        desktop). Senza scena (pywebview l'ha mostrata da sola) si restituisce il primo piano
+        solo se l'avevamo preso noi."""
+        nwn = stato["nwn"] if dopo_scena else None
+        if nwn:
+            if not C.porta_davanti(nwn):
+                time.sleep(0.15)              # Windows a volte rifiuta il primo tentativo
+                C.porta_davanti(nwn)
+            time.sleep(USCITA)                # la pagina sfuma sopra il gioco gia' attivo
         with lock_vista:
             if api._scena is not None:
                 return                        # nel frattempo e' arrivata una scena
@@ -537,11 +546,9 @@ def _overlay(porta: int, segreto: str) -> int:
                 pass
             if mia:
                 via(mia)
-            nwn = stato["nwn"] if dopo_scena else None
             if nwn:
-                if not C.porta_davanti(nwn):
-                    time.sleep(0.15)          # Windows a volte rifiuta il primo tentativo
-                    C.porta_davanti(nwn)
+                if C._u32.GetForegroundWindow() != nwn:
+                    C.porta_davanti(nwn)      # qualcuno l'ha preso nel frattempo
                 log.info("scena finita: NWN di nuovo davanti")
             elif presa_da_noi and davanti_prima:
                 C.porta_davanti(davanti_prima)   # al Connetti: chi c'era (di solito il Companion)
