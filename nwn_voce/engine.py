@@ -35,9 +35,10 @@ SW_SHOWMINNOACTIVE = 7      # minimizzato, senza rubare il focus a NWN
 
 
 class Engine:
-    def __init__(self, emit: Optional[Callable[..., None]] = None, regia=None) -> None:
+    def __init__(self, emit: Optional[Callable[..., None]] = None, regia=None, palco=None) -> None:
         self.emit = emit or (lambda key, **data: None)
         self.regia = regia            # video chiesti dal server (regia.py); None = niente video
+        self.palco = palco            # scene interattive (palco.py); None = niente scene
         self._lock = threading.RLock()
         self._gen = 0
         self._mumble: Optional[subprocess.Popen] = None
@@ -100,6 +101,9 @@ class Engine:
                 client.on_video = lambda nome, rid: regia.richiesta(
                     nome, rid, client.send_video_esito)
                 threading.Thread(target=self._videoteca, name="videoteca", daemon=True).start()
+            if self.palco is not None:
+                palco = self.palco
+                client.on_scena = lambda tm, sid, tipo, dati: palco.evento(tm, sid, tipo, dati, client)
             client.open()
             stop = threading.Event()
             self._client, self._stop_evt = client, stop
@@ -122,6 +126,9 @@ class Engine:
         try:
             from . import videoteca
             videoteca.aggiorna(self.regia.registro)
+            if self.palco is not None:
+                from . import palco
+                videoteca.aggiorna(self.regia.registro, sc=palco.scaffale())
         except Exception:  # noqa: BLE001 -- i video non devono mai fermare la voce
             log.exception("videoteca")
 

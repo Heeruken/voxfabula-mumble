@@ -3,6 +3,7 @@ schema che scrive vc_voice.nss, relay vero in un thread, app vera come client.""
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
@@ -353,6 +354,146 @@ class CinemaTest(RelayCase):
         c.close()
         self.assertTrue(self.wait_for(lambda: self.riga("r5") == (2, "disconnesso")),
                         self.riga("r5"))
+
+    def companion(self, cdkey="KTEST"):
+        c = sqlite3.connect(self.db)
+        try:
+            r = c.execute("SELECT cinema FROM vf_companion WHERE cdkey=?", (cdkey,)).fetchone()
+        except sqlite3.OperationalError:
+            r = None
+        c.close()
+        return r
+
+    def test_companion_collegato_e_poi_via(self):
+        # lo script controlla qui PRIMA di oscurare lo schermo
+        c, _ = self.client_cinema("Tester", "visto")
+        self.assertEqual(self.wait_for(lambda: self.companion()), (1,))
+        c.close()
+        self.assertTrue(self.wait_for(lambda: self.companion() is None), self.companion())
+
+    def test_companion_vecchio_senza_video(self):
+        self.connect("Tester")                     # hello senza "cinema"
+        self.assertEqual(self.wait_for(lambda: self.companion()), (0,))
+
+
+class PalcoTest(RelayCase):
+    """Scene interattive: script (tabelle vf_scena*) <-> relay <-> client."""
+
+    def sql(self, q, args=()):
+        c = sqlite3.connect(self.db)
+        for t in server._SCENA_TABLES:
+            c.execute(t)
+        r = c.execute(q, args).fetchall()
+        c.commit()
+        c.close()
+        return r
+
+    def apri(self, sid, cdkey="KTEST", tipo="esamina", dati=None):
+        self.sql("INSERT INTO vf_scena VALUES(?,?,?,?,0,'',strftime('%s','now'))",
+                 (sid, cdkey, tipo, json.dumps(dati or {"oggetto": "coppa"})))
+
+    def client_palco(self, player):
+        ricevuti = []
+        c = RelayClient("127.0.0.1", self.port, player=player)
+        c.on_scena = lambda tm, sid, tipo, dati: ricevuti.append((tm, sid, tipo, dati))
+        c.open()
+        self.clients.append(c)
+        self.assertTrue(self.wait_for(lambda: c.connected))
+        return c, ricevuti
+
+    def test_apertura_evento_messaggio_chiusura(self):
+        c, ric = self.client_palco("Tester")
+        self.apri("aa01")
+        self.assertTrue(self.wait_for(lambda: ric), "scena non arrivata")
+        self.assertEqual(ric[0], ("apri", "aa01", "esamina", {"oggetto": "coppa"}))
+        # evento del giocatore -> allo script
+        c.send_scena_ev("aa01", "indaga", {"punto": 2})
+        self.assertTrue(self.wait_for(lambda: self.sql("SELECT ev, dati FROM vf_scena_ev")))
+        self.assertEqual(self.sql("SELECT cdkey, ev, dati FROM vf_scena_ev"), [("KTEST", "indaga", '{"punto": 2}')])
+        # messaggio dello script -> al giocatore
+        self.sql("INSERT INTO vf_scena_msg (sid, cdkey, dati, t) VALUES('aa01','',?,0)", (json.dumps({"tiro": 17}),))
+        self.assertTrue(self.wait_for(lambda: len(ric) >= 2))
+        self.assertEqual(ric[1], ("msg", "aa01", "", {"tiro": 17}))
+        # lo script chiude
+        self.sql("UPDATE vf_scena SET stato=3 WHERE sid='aa01'")
+        self.assertTrue(self.wait_for(lambda: len(ric) >= 3))
+        self.assertEqual(ric[2][:2], ("chiudi", "aa01"))
+
+    def test_evento_su_scena_altrui_ignorato(self):
+        c, ric = self.client_palco("Amico")
+        self.apri("bb02", cdkey="KTEST")              # e' di Tester
+        time.sleep(0.8)
+        c.send_scena_ev("bb02", "indaga", {})
+        time.sleep(0.8)
+        self.assertEqual(ric, [])
+        self.assertEqual(self.sql("SELECT * FROM vf_scena_ev"), [])
+
+    def test_vista_girata_agli_altri(self):
+        a, ric_a = self.client_palco("Tester")
+        b, ric_b = self.client_palco("Amico")
+        self.apri("cc03", cdkey="KTEST")
+        self.apri("cc03", cdkey="KAMICO")
+        self.assertTrue(self.wait_for(lambda: ric_a and ric_b))
+        a.send_scena_ev("cc03", "vista", {"q": [0, 0, 0, 1]})
+        self.assertTrue(self.wait_for(lambda: len(ric_b) >= 2))
+        self.assertEqual(ric_b[1], ("msg", "cc03", "", {"tipo": "vista", "da": "Tester", "v": {"q": [0, 0, 0, 1]}}))
+        time.sleep(0.4)
+        self.assertEqual(len(ric_a), 1)                # a se stesso non torna
+        self.assertEqual(self.sql("SELECT * FROM vf_scena_ev"), [])   # la vista non va allo script
+
+    def test_chiusa_dal_giocatore_e_disconnesso(self):
+        a, ric = self.client_palco("Tester")
+        self.apri("dd04")
+        self.apri("dd05")
+        self.assertTrue(self.wait_for(lambda: len(ric) >= 2))
+        a.send_scena_ev("dd04", "chiusa", {"esito": "esc"})
+        self.assertTrue(self.wait_for(lambda: self.sql("SELECT esito FROM vf_scena WHERE sid='dd04'") == [("esc",)]))
+        a.close()
+        self.assertTrue(self.wait_for(
+            lambda: self.sql("SELECT esito FROM vf_scena WHERE sid='dd05'") == [("disconnesso",)]))
+        self.assertEqual(sorted(self.sql("SELECT sid, ev FROM vf_scena_ev")),
+                         [("dd04", "chiusa"), ("dd05", "chiusa")])
+
+    def test_app_senza_palco_assente(self):
+        self.connect("Tester")
+        self.apri("ee06")
+        self.assertTrue(self.wait_for(
+            lambda: self.sql("SELECT stato, esito FROM vf_scena WHERE sid='ee06'") == [(2, "assente")]))
+
+
+class CatalogoTest(unittest.TestCase):
+    def test_nomi_validi_soltanto(self):
+        dati = {"video": [{"nome": "prova"}, {"nome": "Brutto Nome"}, {"nome": "fine_1"},
+                          "rotto", {"file": "x.vfv"}, {"nome": "prova"}]}
+        self.assertEqual(server.nomi_catalogo(dati), ["fine_1", "prova"])
+        self.assertEqual(server.nomi_catalogo(["non", "un", "oggetto"]), [])
+
+    def test_catalogo_scritto_nel_db(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        db = os.path.join(tmp.name, "nwn_voice.sqlite3")
+        cat = os.path.join(tmp.name, "catalogo.json")
+        with open(cat, "w", encoding="utf-8") as fh:
+            json.dump({"video": [{"nome": "ingresso"}, {"nome": "finale"}]}, fh)
+        stop = threading.Event()
+        w = server._TalkWriter(db)
+        t = threading.Thread(target=server._catalogo_loop,
+                             args=(w, "file:///" + cat.replace(os.sep, "/"), stop), daemon=True)
+        t.start()
+        end = time.time() + 5
+        nomi = []
+        while time.time() < end and not nomi:
+            time.sleep(0.05)
+            try:
+                c = sqlite3.connect(db)
+                nomi = [r[0] for r in c.execute("SELECT nome FROM vf_video ORDER BY nome")]
+                c.close()
+            except sqlite3.OperationalError:
+                pass
+        stop.set()
+        t.join(2)
+        w.close()
+        self.assertEqual(nomi, ["finale", "ingresso"])
 
 
 if __name__ == "__main__":

@@ -22,10 +22,13 @@ set, the same ``--token``.
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import socket
 import sqlite3
 import threading
 import time
+import urllib.request
 
 from nwn_voce import net_protocol as proto
 from .positions import SqlFileProvider, default_db_path
@@ -42,6 +45,32 @@ _CINEMA_TABLE = ("CREATE TABLE IF NOT EXISTS vf_cinema (id TEXT PRIMARY KEY, cdk
 CINEMA_PERIOD = 0.5          # ogni quanto il relay guarda se ci sono video da mandare
 CINEMA_RESOLVE = 5.0         # ogni quanto ricontrolla nome client -> cdkey
 CINEMA_RETRY_FOR = 60.0      # per quanto si riprova a scrivere un esito se il DB e' occupato
+
+# Controlli PRIMA del video, letti dagli script senza oscurare lo schermo (vf_cinema_inc):
+#   vf_companion: chi ha un client collegato adesso (cinema 1 = sa mostrare i video), t = ultimo
+#                 segno di vita (ogni COMPANION_PERIOD); lo script lo considera vivo per ~15 s.
+#   vf_video:     i video del catalogo pubblicato (gli stessi che scarica il Companion).
+_COMPANION_TABLE = ("CREATE TABLE IF NOT EXISTS vf_companion (cdkey TEXT PRIMARY KEY, "
+                    "cinema INTEGER, palco INTEGER, t INTEGER);")
+# PALCO (scene interattive, vf_scena_inc.nss). Una riga di vf_scena per partecipante:
+#   stato 0 = chiesta dallo script, 1 = aperta sul client, 2 = chiusa (esito), 3 = lo script la chiude.
+# vf_scena_msg: script -> client (cdkey '' = a tutti i partecipanti); vf_scena_ev: client -> script.
+_SCENA_TABLES = (
+    "CREATE TABLE IF NOT EXISTS vf_scena (sid TEXT, cdkey TEXT, tipo TEXT, dati TEXT, "
+    "stato INTEGER, esito TEXT, t INTEGER, PRIMARY KEY (sid, cdkey));",
+    "CREATE TABLE IF NOT EXISTS vf_scena_msg (n INTEGER PRIMARY KEY AUTOINCREMENT, sid TEXT, "
+    "cdkey TEXT, dati TEXT, t INTEGER);",
+    "CREATE TABLE IF NOT EXISTS vf_scena_ev (n INTEGER PRIMARY KEY AUTOINCREMENT, sid TEXT, "
+    "cdkey TEXT, ev TEXT, dati TEXT, t INTEGER);",
+)
+SCENA_PERIOD = 0.15          # ogni quanto il relay guarda scene nuove e messaggi dello script
+VISTA_MAX_HZ = 20.0          # "vista" girate agli altri al massimo cosi' spesso, per giocatore
+_EV_RE = re.compile(r"^[a-z0-9_]{1,24}$")
+_VIDEO_TABLE = "CREATE TABLE IF NOT EXISTS vf_video (nome TEXT PRIMARY KEY, t INTEGER);"
+COMPANION_PERIOD = 5.0
+CATALOGO_URL = "https://nwsync.voxfabula.it/prod/2985642d4b434caab09571e1ec2058f8/cinema/catalogo.json"
+CATALOGO_PERIOD = 300.0      # ogni quanto si rilegge il catalogo (video nuovi senza riavviare)
+_NOME_VIDEO = re.compile(r"^[a-z0-9_-]{1,40}$")   # come regia.NOME_RE del Companion
 
 
 def _log(msg: str) -> None:
@@ -75,6 +104,10 @@ class _TalkWriter:
                       "(cdkey TEXT PRIMARY KEY, talking INTEGER, "
                       "range_request INTEGER, seq INTEGER);")
             c.execute(_CINEMA_TABLE)
+            c.execute(_COMPANION_TABLE)
+            c.execute(_VIDEO_TABLE)
+            for q in _SCENA_TABLES:
+                c.execute(q)
             c.commit()
             self._conn = c
             return True
@@ -178,6 +211,80 @@ class _TalkWriter:
         self._cinema_do(lambda c: c.execute(
             f"UPDATE vf_cinema SET stato=2, esito=? WHERE cdkey=? AND {cond}", (esito, cdkey)))
 
+    def companion_seen(self, cdkey: str, cinema: bool, palco: bool = False) -> None:
+        """Segno di vita del client di questo giocatore (ogni COMPANION_PERIOD)."""
+        self._cinema_do(lambda c: c.execute(
+            "INSERT INTO vf_companion (cdkey, cinema, palco, t) VALUES (?,?,?,strftime('%s','now')) "
+            "ON CONFLICT(cdkey) DO UPDATE SET cinema=excluded.cinema, palco=excluded.palco, t=excluded.t",
+            (cdkey, 1 if cinema else 0, 1 if palco else 0)))
+
+    # ---- palco: scene interattive (vedi _SCENA_TABLES) ----
+    def scena_take(self, cdkey: str) -> list:
+        """Le scene nuove (stato 0) di questo giocatore, segnate come aperte (1): [(sid, tipo, dati)]."""
+        def fn(c):
+            rows = c.execute("SELECT sid, tipo, dati FROM vf_scena WHERE cdkey=? AND stato=0 ORDER BY t",
+                             (cdkey,)).fetchall()
+            for sid, _t, _d in rows:
+                c.execute("UPDATE vf_scena SET stato=1 WHERE sid=? AND cdkey=? AND stato=0", (sid, cdkey))
+            return [(str(s), str(t or ""), str(d or "{}")) for s, t, d in rows]
+        return self._cinema_do(fn, [])
+
+    def scena_giro(self, cdkey: str, ultimi: dict) -> tuple:
+        """Per le scene aperte ``ultimi`` {sid: ultimo n visto}: (messaggi nuovi [(n, sid, dati)],
+        scene che lo script ha chiuso [sid])."""
+        if not ultimi:
+            return [], []
+
+        def fn(c):
+            sids = list(ultimi)
+            segni = ",".join("?" * len(sids))
+            minimo = min(ultimi.values())
+            rows = c.execute(f"SELECT n, sid, dati FROM vf_scena_msg WHERE n>? AND sid IN ({segni}) "
+                             "AND (cdkey='' OR cdkey=?) ORDER BY n", (minimo, *sids, cdkey)).fetchall()
+            msg = [(n, str(s), str(d or "{}")) for n, s, d in rows if n > ultimi.get(s, 0)]
+            chiuse = [str(r[0]) for r in c.execute(
+                f"SELECT sid FROM vf_scena WHERE cdkey=? AND stato=3 AND sid IN ({segni})", (cdkey, *sids))]
+            for s in chiuse:
+                c.execute("UPDATE vf_scena SET stato=2, esito='chiusa dal server' WHERE sid=? AND cdkey=?",
+                          (s, cdkey))
+            return msg, chiuse
+        return self._cinema_do(fn, ([], []))
+
+    def scena_ev(self, sid: str, cdkey: str, ev: str, dati: str) -> bool:
+        """Un evento del giocatore per lo script. Solo per una scena sua e non chiusa."""
+        def fn(c):
+            if not c.execute("SELECT 1 FROM vf_scena WHERE sid=? AND cdkey=? AND stato=1", (sid, cdkey)).fetchone():
+                return False
+            c.execute("INSERT INTO vf_scena_ev (sid, cdkey, ev, dati, t) VALUES (?,?,?,?,strftime('%s','now'))",
+                      (sid, cdkey, ev, dati))
+            return True
+        return bool(self._cinema_do(fn, False))
+
+    def scena_chiusa(self, sid: str, cdkey: str, esito: str) -> None:
+        """Il giocatore ha chiuso la scena (o e' caduto): riga chiusa + evento 'chiusa' per lo script."""
+        def fn(c):
+            if c.execute("UPDATE vf_scena SET stato=2, esito=? WHERE sid=? AND cdkey=? AND stato<2",
+                         (esito, sid, cdkey)).rowcount:
+                c.execute("INSERT INTO vf_scena_ev (sid, cdkey, ev, dati, t) VALUES (?,?,'chiusa',?,"
+                          "strftime('%s','now'))", (sid, cdkey, json.dumps({"esito": esito})))
+        self._cinema_do(fn)
+
+    def companion_gone(self, cdkey: str) -> None:
+        self._cinema_do(lambda c: c.execute("DELETE FROM vf_companion WHERE cdkey=?", (cdkey,)))
+
+    def companion_reset(self) -> None:
+        """All'avvio del relay nessuno e' collegato: via le righe della volta prima."""
+        self._cinema_do(lambda c: c.execute("DELETE FROM vf_companion"))
+
+    def set_videos(self, nomi) -> bool:
+        """Sostituisce l'elenco dei video del catalogo. False = DB occupato."""
+        def fn(c):
+            c.execute("DELETE FROM vf_video")
+            c.executemany("INSERT OR IGNORE INTO vf_video (nome, t) VALUES (?, strftime('%s','now'))",
+                          [(n,) for n in nomi])
+            return True
+        return bool(self._cinema_do(fn, False))
+
     def close(self) -> None:
         with self._lock:
             if self._conn is not None:
@@ -188,10 +295,41 @@ class _TalkWriter:
                 self._conn = None
 
 
+class _Palchi:
+    """Chi guarda quale scena, per girare la "vista" (come uno guarda l'oggetto) agli altri
+    partecipanti al volo, senza passare dal database."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sc: dict = {}                 # sid -> {chiave connessione: send(bytes)}
+
+    def entra(self, sid: str, chiave, send) -> None:
+        with self._lock:
+            self._sc.setdefault(sid, {})[chiave] = send
+
+    def esce(self, sid: str, chiave) -> None:
+        with self._lock:
+            d = self._sc.get(sid)
+            if d is not None:
+                d.pop(chiave, None)
+                if not d:
+                    del self._sc[sid]
+
+    def eco(self, sid: str, chiave, dati: dict) -> None:
+        with self._lock:
+            altri = [s for k, s in self._sc.get(sid, {}).items() if k != chiave]
+        riga = proto.encode_scena_msg(sid, dati)
+        for send in altri:
+            try:
+                send(riga)
+            except OSError:
+                pass                         # se ne accorge il suo _handle
+
+
 def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
             token: str | None, hz: float, stop: threading.Event,
             writer: "_TalkWriter | None" = None,
-            fant: dict | None = None) -> None:
+            fant: dict | None = None, palchi: "_Palchi | None" = None) -> None:
     player = None
     prov = None
     try:
@@ -214,9 +352,17 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
             return
 
         cinema_ok = bool(msg.get("cinema"))       # Companion 1.3+: sa mostrare i video
-        cine = {"cdkey": None, "resolved_at": -1e9, "last": 0.0,
+        palco_ok = bool(msg.get("palco"))         # Companion 1.3.1+: sa aprire le scene
+        cine = {"cdkey": None, "resolved_at": -1e9, "last": 0.0, "seen_at": -1e9,
                 "pend": [], "lock": threading.Lock()}   # esiti da scrivere: (rid, esito, t)
+        # scene aperte su questo client {sid: ultimo messaggio visto}, eventi del client in coda
+        palco = {"aperte": {}, "pend": [], "last": 0.0, "vista_t": {}}
         send_lock = threading.Lock()              # il lettore risponde anche lui sul socket
+        chiave = object()                         # questa connessione, per _Palchi
+
+        def _send(riga: bytes) -> None:
+            with send_lock:
+                conn.sendall(riga)
 
         prov = SqlFileProvider(db_path=db_path, player=player, server=server_id)
         prov.open()
@@ -238,11 +384,18 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
                     line = stream.readline(65536)   # cap per riga: niente buffer illimitato
                     if not line:
                         break
-                    if b"video_esito" not in line or writer is None:
+                    if writer is None or (b"video_esito" not in line and b"scena_ev" not in line):
                         continue                    # 'talk' & co.: volutamente ignorati
                     try:
                         m = proto.decode_line(line)
                     except ValueError:
+                        continue
+                    if isinstance(m, dict) and "scena_ev" in m:
+                        sid, ev, dati = m.get("scena_ev"), str(m.get("ev", "")), m.get("dati", {})
+                        if (palco_ok and proto.sid_ok(sid) and _EV_RE.match(ev) and isinstance(dati, dict)
+                                and len(json.dumps(dati)) <= proto.SCENA_DATI_MAX):
+                            with cine["lock"]:
+                                palco["pend"].append((sid, ev, dati))
                         continue
                     if isinstance(m, dict):
                         esito = str(m.get("esito", ""))
@@ -288,6 +441,9 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
             cd = cine["cdkey"]
             if not cd:
                 return
+            if now - cine["seen_at"] >= COMPANION_PERIOD:
+                cine["seen_at"] = now
+                writer.companion_seen(cd, cinema_ok, palco_ok)
             for rid, video in writer.cinema_take(cd):
                 if cinema_ok:
                     with send_lock:
@@ -295,6 +451,60 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
                     _log(f"{player!r}: video {video!r} ({rid})")
                 else:
                     writer.cinema_close(cd, rid, "assente")   # app vecchia: niente video
+
+        def _scena_tick(now: float) -> None:
+            """Palco: eventi del client verso lo script, scene nuove, messaggi dello script."""
+            cd = cine["cdkey"]
+            if writer is None or not cd or now - palco["last"] < SCENA_PERIOD:
+                return
+            palco["last"] = now
+            aperte = palco["aperte"]
+            with cine["lock"]:
+                pend, palco["pend"] = palco["pend"], []
+            for sid, ev, dati in pend:
+                if sid not in aperte:
+                    continue                          # non e' una scena sua (o gia' chiusa)
+                if ev == "vista":
+                    t0 = palco["vista_t"].get(sid, 0.0)
+                    if palchi is not None and now - t0 >= 1.0 / VISTA_MAX_HZ:
+                        palco["vista_t"][sid] = now
+                        palchi.eco(sid, chiave, {"tipo": "vista", "da": player, "v": dati})
+                elif ev == "chiusa":
+                    esito = str(dati.get("esito", "chiusa"))[:24]
+                    writer.scena_chiusa(sid, cd, esito)
+                    aperte.pop(sid, None)
+                    if palchi is not None:
+                        palchi.esce(sid, chiave)
+                    _log(f"{player!r}: scena {sid} chiusa ({esito})")
+                else:
+                    writer.scena_ev(sid, cd, ev, json.dumps(dati))
+            for sid, tipo, dati in writer.scena_take(cd):
+                if not palco_ok:
+                    writer.scena_chiusa(sid, cd, "assente")   # app senza palco
+                    continue
+                try:
+                    d = json.loads(dati)
+                except ValueError:
+                    d = {}
+                _send(proto.encode_scena(sid, tipo, d if isinstance(d, dict) else {}))
+                aperte[sid] = 0
+                if palchi is not None:
+                    palchi.entra(sid, chiave, _send)
+                _log(f"{player!r}: scena {tipo!r} ({sid})")
+            msgs, chiuse = writer.scena_giro(cd, aperte)
+            for n, sid, dati in msgs:
+                try:
+                    d = json.loads(dati)
+                except ValueError:
+                    continue
+                if isinstance(d, dict) and sid in aperte:
+                    _send(proto.encode_scena_msg(sid, d))
+                    aperte[sid] = max(aperte[sid], n)
+            for sid in chiuse:
+                _send(proto.encode_scena_chiudi(sid))
+                aperte.pop(sid, None)
+                if palchi is not None:
+                    palchi.esce(sid, chiave)
 
         # TEST fantoccio: lo PIANTIAMO una volta sola, dove ti vediamo la prima
         # volta (il tuo punto di spawn), e li' RESTA FERMO. Sei TU che ti allontani:
@@ -310,6 +520,7 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
                              else proto.encode_idle())
             now = time.monotonic()
             _cinema_tick(now)
+            _scena_tick(now)
             if now - last_roster >= roster_period:
                 last_roster = now
                 roster = prov.read_roster()
@@ -343,6 +554,11 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
             cd = cine["cdkey"] if "cine" in locals() else None
             if cd and writer is not None:
                 writer.cinema_drop(cd, "disconnesso", only_sent=True)
+                writer.companion_gone(cd)
+                for sid in list(palco["aperte"]) if "palco" in locals() else []:
+                    writer.scena_chiusa(sid, cd, "disconnesso")
+                    if palchi is not None:
+                        palchi.esce(sid, chiave)
         except Exception:
             pass
         if prov is not None:
@@ -358,6 +574,39 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
             _log(f"{addr} ({player!r}) disconnected")
 
 
+def nomi_catalogo(dati) -> list:
+    """I nomi dei video di un catalogo.json (stesso formato che legge il Companion)."""
+    voci = dati.get("video", []) if isinstance(dati, dict) else []
+    nomi = [str(v.get("nome", "")) for v in voci if isinstance(v, dict)]
+    return sorted({n for n in nomi if _NOME_VIDEO.match(n)})
+
+
+def _leggi_catalogo(url: str) -> list | None:
+    try:
+        with urllib.request.urlopen(url, timeout=15) as r:
+            return nomi_catalogo(json.loads(r.read(1 << 20).decode("utf-8")))
+    except (OSError, ValueError):
+        return None
+
+
+def _catalogo_loop(writer: "_TalkWriter", url: str, stop: threading.Event) -> None:
+    """Tiene vf_video allineata al catalogo pubblicato. Se non si legge, resta l'elenco di prima."""
+    prima = None
+    while not stop.is_set():
+        nomi = _leggi_catalogo(url)
+        if nomi is None:
+            _log("catalogo video: non leggibile, tengo l'elenco di prima")
+            attesa = 30.0
+        elif writer.set_videos(nomi):
+            if nomi != prima:
+                _log(f"catalogo video: {', '.join(nomi) or '(vuoto)'}")
+            prima = nomi
+            attesa = CATALOGO_PERIOD
+        else:
+            attesa = 10.0                        # DB occupato: si riprova presto
+        stop.wait(attesa)
+
+
 def serve(db_path: str, host: str = "0.0.0.0", port: int = 27890,
           server_id: str = "nwn", token: str | None = None, hz: float = 15.0,
           stop: threading.Event | None = None,
@@ -365,10 +614,15 @@ def serve(db_path: str, host: str = "0.0.0.0", port: int = 27890,
           mumble_host: str = "127.0.0.1", mumble_port: int = 64738,
           mumble_user: str = "NWN-Voce", mumble_password: str = "",
           mumble_channel: str | None = None, talk: bool = True,
-          fant: dict | None = None) -> None:
+          fant: dict | None = None, catalogo_url: str | None = None) -> None:
     """Accept clients until ``stop`` is set. Sets ``ready`` once listening."""
     stop = stop or threading.Event()
     writer = _TalkWriter(db_path)               # shared, crash-proof DB writer (#4)
+    writer.companion_reset()
+    palchi = _Palchi()
+    if catalogo_url:
+        threading.Thread(target=_catalogo_loop, args=(writer, catalogo_url, stop),
+                         daemon=True).start()
     if talk:
         # Bot Mumble lato server: sente CHI parla e accende/spegne l'icona (#4).
         TalkListener(writer.set_talking, host=mumble_host, port=mumble_port,
@@ -404,7 +658,7 @@ def serve(db_path: str, host: str = "0.0.0.0", port: int = 27890,
                 break
             threading.Thread(target=_handle,
                              args=(conn, addr, db_path, server_id, token, hz, stop,
-                                   writer, fant),
+                                   writer, fant, palchi),
                              daemon=True).start()
     finally:
         srv.close()
@@ -435,6 +689,8 @@ def main(argv=None) -> int:
                    help="canale Mumble in cui entrare (default: root)")
     p.add_argument("--no-talk", action="store_true",
                    help="non avviare il bot 'chi parla'")
+    p.add_argument("--catalogo", default=CATALOGO_URL,
+                   help="catalogo.json dei video (per i controlli degli script); '' = niente")
     # --- TEST: fantoccio-eco per provare i raggi da soli ---
     p.add_argument("--fantoccio", action="store_true",
                    help="[TEST] bot-eco con distanza oscillante per provare i raggi da solo")
@@ -469,7 +725,8 @@ def main(argv=None) -> int:
         serve(db, a.host, a.port, a.server, a.token, a.hz, stop,
               mumble_host=a.mumble_host, mumble_port=a.mumble_port,
               mumble_user=a.mumble_user, mumble_password=a.mumble_password,
-              mumble_channel=a.mumble_channel, talk=not a.no_talk, fant=fant)
+              mumble_channel=a.mumble_channel, talk=not a.no_talk, fant=fant,
+              catalogo_url=a.catalogo or None)
     except KeyboardInterrupt:
         stop.set()
         print("\nstopping.")

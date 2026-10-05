@@ -33,13 +33,28 @@ log = logging.getLogger(__name__)
 
 # dentro la cartella di NWSync: Cloudflare serve SOLO quella (altrove 403). Lo script di
 # pubblicazione NWSync cancella solo i file spariti dai suoi repo locali: cinema/ non lo tocca.
-BASE = "https://nwsync.voxfabula.it/prod/2985642d4b434caab09571e1ec2058f8/cinema/"
+RADICE = "https://nwsync.voxfabula.it/prod/2985642d4b434caab09571e1ec2058f8/"
+BASE = RADICE + "cinema/"
 CATALOGO = BASE + "catalogo.json"
 HOSTS = frozenset({"nwsync.voxfabula.it"})
 MAX_FILE = 600 * 1024 * 1024       # un video piu' grosso e' sicuramente un errore
 TIMEOUT = 20
 _LOCALE = "catalogo_locale.json"   # cosa abbiamo scaricato noi: {file: sha256}
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+class Scaffale:
+    """Un tipo di contenuto scaricato dal server: dove sta su R2, dove va sul PC, che file
+    accetta. Stesse regole per tutti (HTTPS, nostro dominio, impronta). ``voce`` = parola del
+    registro attivita' ("video" -> video_scaricato / video_tolto)."""
+
+    def __init__(self, base: str, lista: str, estensioni: tuple, cartella, voce: str,
+                 max_file: int = MAX_FILE) -> None:
+        self.base, self.lista, self.estensioni = base, lista, estensioni
+        self.cartella, self.voce, self.max_file = cartella, voce, max_file
+
+
+VIDEO = Scaffale(BASE, "video", ESTENSIONI, cartella_video, "video")
 
 
 class _SoloNostri(urllib.request.HTTPRedirectHandler):
@@ -70,18 +85,18 @@ def _sha_file(path: str) -> str:
     return h.hexdigest()
 
 
-def _voci_valide(dati) -> list:
+def _voci_valide(dati, sc: Scaffale = VIDEO) -> list:
     """Le voci del catalogo, scartando tutto quello che non e' come ce lo aspettiamo."""
     out = []
-    for v in (dati or {}).get("video", []) if isinstance(dati, dict) else []:
+    for v in (dati or {}).get(sc.lista, []) if isinstance(dati, dict) else []:
         try:
             nome, file = str(v["nome"]), str(v["file"])
             sha, size = str(v["sha256"]).lower(), int(v["size"])
         except (KeyError, TypeError, ValueError):
             continue
         base, est = os.path.splitext(file)
-        if NOME_RE.match(nome) and base == nome and est in ESTENSIONI \
-                and _SHA_RE.match(sha) and 0 < size <= MAX_FILE:
+        if NOME_RE.match(nome) and base == nome and est in sc.estensioni \
+                and _SHA_RE.match(sha) and 0 < size <= sc.max_file:
             out.append({"nome": nome, "file": file, "sha256": sha, "size": size})
     return out
 
@@ -105,13 +120,13 @@ def _scrivi_locale(cartella: str, d: dict) -> None:
         pass
 
 
-def _scarica(voce: dict, cartella: str) -> bool:
+def _scarica(voce: dict, cartella: str, base: str = BASE) -> bool:
     dest = os.path.join(cartella, voce["file"])
     parte = dest + ".part"
     h = hashlib.sha256()
     letti = 0
     try:
-        with _apri(BASE + voce["file"]) as r, open(parte, "wb") as fh:
+        with _apri(base + voce["file"]) as r, open(parte, "wb") as fh:
             while True:
                 blocco = r.read(1 << 20)
                 if not blocco:
@@ -126,7 +141,7 @@ def _scarica(voce: dict, cartella: str) -> bool:
         os.replace(parte, dest)
         return True
     except (OSError, ValueError) as exc:
-        log.warning("video %s non scaricato: %s", voce["file"], exc)
+        log.warning("%s non scaricato: %s", voce["file"], exc)
         try:
             os.remove(parte)
         except OSError:
@@ -134,21 +149,21 @@ def _scarica(voce: dict, cartella: str) -> bool:
         return False
 
 
-def aggiorna(registro, catalogo: Optional[dict] = None) -> int:
-    """Allinea la cartella video al catalogo del server. Ritorna quanti video ha
+def aggiorna(registro, catalogo: Optional[dict] = None, sc: Scaffale = VIDEO) -> int:
+    """Allinea la cartella dello scaffale al catalogo del server. Ritorna quanti file ha
     scaricato. ``catalogo`` gia' letto: solo per i test."""
-    cartella = cartella_video()
+    cartella = sc.cartella()
     if catalogo is None:
         try:
-            with _apri(CATALOGO) as r:
+            with _apri(sc.base + "catalogo.json") as r:
                 catalogo = json.loads(r.read(1 << 20).decode("utf-8"))
         except Exception as exc:  # noqa: BLE001 -- niente catalogo = niente da fare
-            log.info("catalogo video non disponibile: %s", exc)
+            log.info("catalogo %s non disponibile: %s", sc.voce, exc)
             return 0
-    if not isinstance(catalogo, dict) or not isinstance(catalogo.get("video"), list):
-        log.warning("catalogo video malformato: ignorato")
+    if not isinstance(catalogo, dict) or not isinstance(catalogo.get(sc.lista), list):
+        log.warning("catalogo %s malformato: ignorato", sc.voce)
         return 0                                       # mai cancellare per un catalogo rotto
-    voci = _voci_valide(catalogo)
+    voci = _voci_valide(catalogo, sc)
     locale = _leggi_locale(cartella)
     scaricati = 0
     for v in voci:
@@ -160,17 +175,17 @@ def aggiorna(registro, catalogo: Optional[dict] = None) -> int:
                 and _sha_file(dest) == v["sha256"]:
             locale[v["file"]] = v["sha256"]            # c'era gia' (copiato a mano)
             continue
-        if _scarica(v, cartella):
+        if _scarica(v, cartella, sc.base):
             locale[v["file"]] = v["sha256"]
             scaricati += 1
-            registro.scrivi("video_scaricato", video=v["nome"],
+            registro.scrivi(sc.voce + "_scaricato", **{sc.voce: v["nome"]},
                             mb=round(v["size"] / 1048576, 1))
     # via i video scaricati da noi che il server non pubblica piu'
     nel_catalogo = {v["file"] for v in voci}
     for file in [f for f in locale if f not in nel_catalogo]:
         try:
             os.remove(os.path.join(cartella, os.path.basename(file)))
-            registro.scrivi("video_tolto", video=os.path.splitext(file)[0])
+            registro.scrivi(sc.voce + "_tolto", **{sc.voce: os.path.splitext(file)[0]})
         except OSError:
             pass
         locale.pop(file, None)

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Vox Fabula - Palco</title>
+<link rel="stylesheet" href="palco.css">
+</head>
+<body>
+  <!-- Il palco: overlay trasparente sopra Neverwinter Nights. Il velo scurisce il gioco sotto;
+       la scena (scene/<tipo>.js) disegna dentro #scena. Esc chiude sempre. -->
+  <div id="velo"></div>
+  <header id="testa">
+    <h1 id="titolo"></h1>
+    <span id="aiuto">Esc per chiudere</span>
+  </header>
+  <main id="scena"></main>
+  <aside id="lato">
+    <div id="azioni"></div>
+    <div id="diario"></div>
+  </aside>
+  <div id="dado" hidden></div>
+  <script type="module" src="palco.js"></script>
+</body>
+</html>

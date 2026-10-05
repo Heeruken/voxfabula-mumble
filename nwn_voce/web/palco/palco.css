@@ -1,0 +1,149 @@
+@font-face { font-family: 'Cinzel'; font-weight: 600; src: url('fonts/cinzel-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Alegreya'; font-weight: 400; src: url('fonts/alegreya-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Alegreya'; font-weight: 400; font-style: italic; src: url('fonts/alegreya-latin-400-italic.woff2') format('woff2'); }
+@font-face { font-family: 'Alegreya SC'; font-weight: 500; src: url('fonts/alegreya-sc-latin-500-normal.woff2') format('woff2'); }
+
+:root {
+  --sky: #0e0b22;
+  --frame: #4a4198;
+  --parchment: #e0dcc9;
+  --gold: #d8cfa8;
+  --crystal: #6d4fc4;
+  --crystal-bright: #8f74e8;
+  --ok: #7fc28a;
+  --ko: #d77a6e;
+}
+
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: transparent;
+  color: var(--parchment);
+  font: 17px/1.4 'Alegreya', Georgia, serif;
+  user-select: none;
+}
+
+/* il gioco resta visibile sotto, scurito */
+#velo { position: fixed; inset: 0; background: rgba(7, 5, 19, .62); }
+
+#testa {
+  position: fixed; left: 0; right: 0; top: 0; height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px;
+  background: linear-gradient(rgba(14, 11, 34, .92), rgba(14, 11, 34, 0));
+}
+#titolo { margin: 0; font: 600 22px 'Cinzel', serif; letter-spacing: .06em; color: var(--gold); }
+#aiuto { font: 500 14px 'Alegreya SC', serif; letter-spacing: .05em; opacity: .75; }
+
+#scena { position: fixed; inset: 56px 340px 0 0; }
+#scena canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+#scena canvas.presa { cursor: grabbing; }
+
+#lato {
+  position: fixed; right: 0; top: 56px; bottom: 0; width: 340px;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 10px 20px 24px; box-sizing: border-box;
+}
+#azioni { display: flex; flex-direction: column; gap: 8px; }
+#azioni button {
+  font: 500 16px 'Alegreya SC', serif; letter-spacing: .04em;
+  color: var(--parchment); background: rgba(74, 65, 152, .55);
+  border: 1px solid rgba(216, 207, 168, .45); border-radius: 4px;
+  padding: 9px 12px; cursor: pointer; text-align: left;
+}
+#azioni button:hover:not(:disabled) { background: rgba(109, 79, 196, .75); }
+#azioni button:disabled { opacity: .45; cursor: default; }
+
+#diario {
+  flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  padding-right: 4px;
+}
+.voce {
+  background: rgba(14, 11, 34, .78); border-left: 3px solid var(--frame);
+  padding: 8px 10px; border-radius: 0 4px 4px 0;
+}
+.voce.ok { border-left-color: var(--ok); }
+.voce.ko { border-left-color: var(--ko); }
+.voce.segreto { border-left-color: var(--gold); font-style: italic; }
+.voce small { display: block; opacity: .7; font-size: 13px; }
+
+/* pallini sul modello: piccoli e vivi, al passaggio del mouse si aprono in un anello con l'etichetta */
+#pallini { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.pallino {
+  position: absolute; left: 0; top: 0; width: 0; height: 0;
+  padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto;
+  will-change: transform;
+}
+.pallino i {
+  position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%;
+  background: radial-gradient(circle, #fff8dc 0 28%, #f2cf5b 45%, rgba(242, 207, 91, 0) 72%);
+  box-shadow: 0 0 10px 3px rgba(242, 207, 91, .55);
+  animation: respira 2.2s ease-in-out infinite;
+  transition: left .25s, top .25s, width .25s, height .25s, background .25s, box-shadow .25s, border-color .25s;
+  border: 1.5px solid rgba(255, 248, 220, 0);
+  box-sizing: border-box;
+}
+.pallino span {
+  position: absolute; left: 22px; top: -13px; white-space: nowrap;
+  font: 500 15px 'Alegreya SC', serif; letter-spacing: .04em; color: var(--parchment);
+  background: rgba(14, 11, 34, .85); padding: 3px 10px; border-radius: 3px;
+  border-left: 2px solid var(--gold);
+  opacity: 0; transform: translateX(-6px); transition: opacity .2s, transform .2s;
+  pointer-events: none;
+}
+.pallino:hover i, .pallino:focus-visible i {
+  left: -16px; top: -16px; width: 32px; height: 32px;
+  background: radial-gradient(circle, rgba(255, 248, 220, .95) 0 14%, rgba(242, 207, 91, .18) 30%, rgba(242, 207, 91, 0) 70%);
+  border-color: rgba(255, 248, 220, .9);
+  box-shadow: 0 0 18px 5px rgba(242, 207, 91, .45);
+  animation: none;
+}
+.pallino:hover span, .pallino:focus-visible span { opacity: 1; transform: none; }
+.pallino:focus { outline: none; }
+.pallino.dietro { opacity: .28; }
+.pallino.dietro:hover { opacity: .8; }
+.pallino.attesa i { animation: respira .5s ease-in-out infinite; }
+.pallino.ok i {
+  background: radial-gradient(circle, #eaffea 0 28%, var(--ok) 50%, rgba(127, 194, 138, 0) 74%);
+  box-shadow: 0 0 14px 4px rgba(127, 194, 138, .65); animation: none;
+}
+.pallino.ko i {
+  background: radial-gradient(circle, #ffe2dc 0 22%, var(--ko) 46%, rgba(215, 122, 110, 0) 72%);
+  box-shadow: 0 0 6px 1px rgba(215, 122, 110, .45); animation: none; opacity: .75;
+}
+.pallino.ok, .pallino.ko { cursor: default; }
+.pallino.spento { display: none; }
+@keyframes respira {
+  0%, 100% { transform: scale(.82); opacity: .8; }
+  50% { transform: scale(1.12); opacity: 1; }
+}
+
+#chi { position: fixed; left: 24px; bottom: 18px; font-style: italic; opacity: .8; }
+
+/* il dado: uguale per tutti (stesso seme, stessi tempi) */
+#dado {
+  position: fixed; left: calc((100% - 340px) / 2); top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  pointer-events: none;
+}
+#dado[hidden] { display: none; }
+#dado.vicino .faccia { width: 84px; height: 84px; font-size: 32px; }
+#dado.vicino .conto { font-size: 17px; }
+#dado .faccia {
+  width: 120px; height: 120px;
+  display: grid; place-items: center;
+  font: 600 46px 'Cinzel', serif; color: var(--sky);
+  background: radial-gradient(circle at 35% 30%, #f3eedb, var(--gold) 60%, #9d916a);
+  clip-path: polygon(50% 0, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+  transition: transform .12s;
+}
+#dado .faccia.gira { transform: rotate(18deg) scale(.94); }
+#dado .faccia.venti { background: radial-gradient(circle at 35% 30%, #fff6c9, #f2cf5b 60%, #a4801e); }
+#dado .faccia.uno { background: radial-gradient(circle at 35% 30%, #f1c6bd, #c9604f 60%, #7a2d22); }
+#dado .conto {
+  font: 500 20px 'Alegreya SC', serif; letter-spacing: .04em;
+  background: rgba(14, 11, 34, .85); padding: 6px 14px; border-radius: 4px;
+  opacity: 0; transition: opacity .3s;
+}
+#dado .conto.su { opacity: 1; }
+#dado .chi { font-style: italic; opacity: .85; }

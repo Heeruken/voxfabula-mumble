@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 class RelayClient:
     def __init__(self, host: str, port: int = 27890, player: str = "",
                  token: Optional[str] = None, stale_after: float = 2.0,
-                 on_video=None) -> None:
+                 on_video=None, on_scena=None) -> None:
         self.host = host
         self.port = port
         self.player = player
@@ -37,6 +37,9 @@ class RelayClient:
         # on_video(nome, id): il server chiede un video. Se c'e', il hello dice al relay
         # che sappiamo mostrarli; deve ritornare subito (il lavoro va in un altro thread).
         self.on_video = on_video
+        # on_scena(tipo_msg, sid, tipo, dati): il palco (scene interattive). tipo_msg e'
+        # "apri" | "msg" | "chiudi". Come on_video: deve ritornare subito.
+        self.on_scena = on_scena
         self._send_lock = threading.Lock()
         self._lock = threading.Lock()
         self._latest: Optional[PlayerState] = None
@@ -104,6 +107,29 @@ class RelayClient:
         except OSError:
             return False
 
+    def send_scena_ev(self, sid: str, ev: str, dati: Optional[dict] = None) -> bool:
+        """Un evento del giocatore nella scena ``sid`` (False = non collegati)."""
+        with self._lock:
+            sock = self._sock
+        if sock is None:
+            return False
+        try:
+            with self._send_lock:
+                sock.sendall(proto.encode_scena_ev(sid, ev, dati))
+            return True
+        except OSError:
+            return False
+
+    def _scena(self, tipo_msg: str, msg: dict, chiave: str) -> None:
+        sid = msg.get(chiave)
+        if self.on_scena is None or not proto.sid_ok(sid):
+            return
+        dati = msg.get("dati", {})
+        try:
+            self.on_scena(tipo_msg, sid, str(msg.get("tipo", "")), dati if isinstance(dati, dict) else {})
+        except Exception:  # noqa: BLE001 -- mai far cadere la voce
+            log.exception("scena non gestita")
+
     # ---- rete ----
     def _run(self) -> None:
         backoff = 1.0
@@ -118,7 +144,8 @@ class RelayClient:
                 backoff = 1.0
                 with self._send_lock:
                     sock.sendall(proto.encode_hello(self.player, self.token,
-                                                    cinema=self.on_video is not None))
+                                                    cinema=self.on_video is not None,
+                                                    palco=self.on_scena is not None))
                 for line in sock.makefile("rb"):
                     if self._stop.is_set():
                         break
@@ -141,6 +168,12 @@ class RelayClient:
                                 self.on_video(str(msg["video"]), str(msg.get("id", "")))
                             except Exception:  # noqa: BLE001 -- mai far cadere la voce
                                 log.exception("richiesta video non gestita")
+                    elif "scena_msg" in msg:
+                        self._scena("msg", msg, "scena_msg")
+                    elif "scena" in msg:
+                        self._scena("apri", msg, "scena")
+                    elif "scena_chiudi" in msg:
+                        self._scena("chiudi", msg, "scena_chiudi")
                     elif "error" in msg:
                         log.warning("il relay ci ha rifiutato: %r", msg["error"])
                         with self._lock:

@@ -82,6 +82,14 @@
           </div>
         </div>
         <div class="pc-sec">
+          <div class="pc-h" data-i18n="pc_palco_h"></div>
+          <ul><li data-i18n="pc_palco_1"></li><li data-i18n="pc_palco_2"></li><li data-i18n="pc_palco_3"></li></ul>
+          <div class="field">
+            <label class="check"><input id="pc-palco" type="checkbox" onchange="savePalco()"> <span data-i18n="pc_palco_toggle"></span></label>
+            <div class="set-hint" data-i18n="pc_palco_hint"></div>
+          </div>
+        </div>
+        <div class="pc-sec">
           <div class="pc-h" data-i18n="pc_never_h"></div>
           <ul><li data-i18n="pc_never_1"></li><li data-i18n="pc_never_2"></li><li data-i18n="pc_never_3"></li><li data-i18n="pc_never_4"></li></ul>
         </div>
@@ -213,11 +221,17 @@
         pc_cine_4: "Per mostrare il video porta la sua finestra davanti a NWN e alla fine ridà il gioco a te.",
         pc_video_toggle: "Mostra i video del server",
         pc_video_hint: "Spento: il server ti fa entrare negli eventi senza video.",
+        pc_palco_h: "Scene",
+        pc_palco_1: "Quando lo chiede il server apre una scena sopra il gioco, per esempio un oggetto in 3D da girare ed esaminare. Il gioco resta visibile sotto; Esc la chiude sempre.",
+        pc_palco_2: "Le pagine delle scene sono dentro il programma. Dal server arrivano solo i dati e i modelli 3D (da nwsync.voxfabula.it, controllati con la loro impronta).",
+        pc_palco_3: "Al server manda solo quello che fai nella scena: come giri l'oggetto e i pulsanti che premi. I tiri dei dadi li fa il server.",
+        pc_palco_toggle: "Apri le scene del server",
+        pc_palco_hint: "Spento: le scene non si aprono e il server ti fa continuare senza.",
         pc_never_h: "Cosa non fa mai",
         pc_never_1: "Non legge i tuoi file e non registra lo schermo. Della tastiera, Mumble guarda solo il tasto per parlare.",
         pc_never_2: "Non entra nel processo di NWN e non modifica il gioco.",
         pc_never_3: "Non installa niente nel sistema e non chiede di essere amministratore.",
-        pc_never_4: "Non manda dati a nessuno oltre ai server di Vox Fabula: nome, voce e l'esito dei video.",
+        pc_never_4: "Non manda dati a nessuno oltre ai server di Vox Fabula: nome, voce e l'esito dei video e quello che fai nelle scene.",
         pc_log_h: "Registro attività",
         pc_log_hint: "Ogni video mostrato, saltato o scaricato finisce qui, con l'ora.",
         pc_log_empty: "Ancora niente.",
@@ -228,6 +242,16 @@
         video_scaricato: "Scaricato il video «{video}» ({mb} MB).",
         video_tolto: "Tolto il video «{video}»: il server non lo usa più.",
         video_interruttore: "Video del server: {acceso}.",
+        scena_aperta: "Il server ha aperto la scena «{scena}» (oggetto: {oggetto}).",
+        scena_chiusa: "Scena «{scena}»: {esito}.",
+        scena_rifiutata: "Scena «{scena}» non aperta: hai spento le scene del server.",
+        scena_sconosciuta: "Scena «{scena}» sconosciuta a questa versione: serve un aggiornamento.",
+        oggetto_mancante: "Oggetto 3D «{oggetto}» non presente sul PC: scena non aperta.",
+        oggetto_scaricato: "Scaricato l'oggetto 3D «{oggetto}» ({mb} MB).",
+        oggetto_tolto: "Tolto l'oggetto 3D «{oggetto}»: il server non lo usa più.",
+        palco_interruttore: "Scene del server: {acceso}.",
+        es_esc: "chiusa con Esc", es_chiusa: "chiusa", es_server: "chiusa dal server", es_app: "chiusa con l'app",
+        es_sconosciuta: "sconosciuta",
         es_visto: "visto", es_saltato: "saltato", es_errore: "non riuscito", es_mancante: "mancante",
         es_disattivato: "spento da te", es_occupato: "un altro video era in corso",
         on_1: "accesi", on_0: "spenti"
@@ -298,11 +322,17 @@
         pc_cine_4: "To show a video it brings its window in front of NWN, and gives the game back to you at the end.",
         pc_video_toggle: "Show server videos",
         pc_video_hint: "Off: the server lets you into events without a video.",
+        pc_palco_h: "Scenes",
+        pc_palco_1: "When the server asks, it opens a scene over the game, for example a 3D object to turn and examine. The game stays visible underneath; Esc always closes it.",
+        pc_palco_2: "The scene pages are inside the program. Only data and 3D models come from the server (from nwsync.voxfabula.it, each checked against its fingerprint).",
+        pc_palco_3: "It sends the server only what you do in the scene: how you turn the object and the buttons you press. Dice rolls are made by the server.",
+        pc_palco_toggle: "Open server scenes",
+        pc_palco_hint: "Off: scenes don't open and the server lets you go on without them.",
         pc_never_h: "What it never does",
         pc_never_1: "It doesn't read your files or record your screen. Of your keyboard, Mumble only watches the push-to-talk key.",
         pc_never_2: "It doesn't get inside the NWN process and doesn't modify the game.",
         pc_never_3: "It installs nothing in the system and never asks for administrator rights.",
-        pc_never_4: "It sends no data to anyone but the Vox Fabula servers: your name, your voice and how videos went.",
+        pc_never_4: "It sends no data to anyone but the Vox Fabula servers: your name, your voice, how videos went and what you do in scenes.",
         pc_log_h: "Activity log",
         pc_log_hint: "Every video shown, skipped or downloaded ends up here, with the time.",
         pc_log_empty: "Nothing yet.",
@@ -313,6 +343,16 @@
         video_scaricato: "Downloaded the video “{video}” ({mb} MB).",
         video_tolto: "Removed the video “{video}”: the server no longer uses it.",
         video_interruttore: "Server videos: {acceso}.",
+        scena_aperta: "The server opened the scene “{scena}” (object: {oggetto}).",
+        scena_chiusa: "Scene “{scena}”: {esito}.",
+        scena_rifiutata: "Scene “{scena}” not opened: you turned server scenes off.",
+        scena_sconosciuta: "Scene “{scena}” unknown to this version: an update is needed.",
+        oggetto_mancante: "3D object “{oggetto}” is not on this PC: scene not opened.",
+        oggetto_scaricato: "Downloaded the 3D object “{oggetto}” ({mb} MB).",
+        oggetto_tolto: "Removed the 3D object “{oggetto}”: the server no longer uses it.",
+        palco_interruttore: "Server scenes: {acceso}.",
+        es_esc: "closed with Esc", es_chiusa: "closed", es_server: "closed by the server", es_app: "closed with the app",
+        es_sconosciuta: "unknown",
         es_visto: "watched", es_saltato: "skipped", es_errore: "failed", es_mancante: "missing",
         es_disattivato: "turned off by you", es_occupato: "another video was playing",
         on_1: "on", on_0: "off"
@@ -561,12 +601,16 @@
         if (r) {
           activity = (r.righe || []).map(parseActivityLine);
           document.getElementById("pc-video").checked = r.video_server !== false;
+          document.getElementById("pc-palco").checked = r.palco_server !== false;
         }
       } catch (e) {}
       renderPcLog();
       document.getElementById("pc-view").style.display = "";
     }
     function closePc() { document.getElementById("pc-view").style.display = "none"; }
+    async function savePalco() {
+      try { await window.pywebview.api.save_palco_server(document.getElementById("pc-palco").checked); } catch (e) {}
+    }
     async function saveVideo() {
       try { await window.pywebview.api.save_video_server(document.getElementById("pc-video").checked); } catch (e) {}
     }

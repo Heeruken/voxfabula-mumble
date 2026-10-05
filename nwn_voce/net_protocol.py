@@ -28,6 +28,17 @@ client -> relay:             {"video_esito": "<id>", "esito": "<esito>"}
 Un client senza "cinema" nel hello non riceve mai video: il relay risponde
 subito "assente" allo script, che fa entrare il personaggio senza video.
 I client vecchi ignorano i messaggi che non conoscono.
+
+PALCO (Companion 1.3.1+): scene interattive in un overlay sopra il gioco (es. esaminare un
+oggetto in 3D), aperte da uno script del server a uno o piu' giocatori. Le decisioni (tiri,
+cosa si scopre) le prende SEMPRE lo script: il client mostra e riferisce.
+client -> relay, nel hello:  {"hello": .., "palco": 1}
+relay -> client:  {"scena": "<sid>", "tipo": "<tipo>", "dati": {..}}   # apri
+                  {"scena_msg": "<sid>", "dati": {..}}                 # dal server (o "vista" di un altro)
+                  {"scena_chiudi": "<sid>"}                            # il server la chiude
+client -> relay:  {"scena_ev": "<sid>", "ev": "<nome>", "dati": {..}}
+    ev "vista"  = come il giocatore guarda la scena: il relay la gira agli altri partecipanti
+    ev "chiusa" = il giocatore l'ha chiusa (dati.esito); ogni altro ev va allo script
 """
 
 from __future__ import annotations
@@ -44,13 +55,47 @@ _IDLE = b'{"idle":true}\n'
 ESITI_VIDEO = ("visto", "saltato", "errore", "mancante", "disattivato", "occupato")
 
 
-def encode_hello(player: str, token: str | None = None, cinema: bool = False) -> bytes:
+def encode_hello(player: str, token: str | None = None, cinema: bool = False,
+                 palco: bool = False) -> bytes:
     d = {"hello": player}
     if token:
         d["token"] = token
     if cinema:
         d["cinema"] = 1
+    if palco:
+        d["palco"] = 1
     return (json.dumps(d) + "\n").encode("utf-8")
+
+
+SCENA_DATI_MAX = 16384      # byte di "dati" in un messaggio di scena (oltre: scartato)
+SID_RE_CHARS = "0123456789abcdef"
+
+
+def sid_ok(sid) -> bool:
+    return isinstance(sid, str) and 1 <= len(sid) <= 32 and all(c in SID_RE_CHARS for c in sid)
+
+
+def _riga(d: dict) -> bytes:
+    return (json.dumps(d, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+def encode_scena(sid: str, tipo: str, dati: dict) -> bytes:
+    """relay -> client: apri la scena ``sid`` di tipo ``tipo``."""
+    return _riga({"scena": sid, "tipo": tipo, "dati": dati})
+
+
+def encode_scena_msg(sid: str, dati: dict) -> bytes:
+    """relay -> client: un messaggio per la scena aperta ``sid``."""
+    return _riga({"scena_msg": sid, "dati": dati})
+
+
+def encode_scena_chiudi(sid: str) -> bytes:
+    return _riga({"scena_chiudi": sid})
+
+
+def encode_scena_ev(sid: str, ev: str, dati: dict | None = None) -> bytes:
+    """client -> relay: il giocatore ha fatto ``ev`` nella scena ``sid``."""
+    return _riga({"scena_ev": sid, "ev": ev, "dati": dati or {}})
 
 
 def encode_video(nome: str, rid: str) -> bytes:
