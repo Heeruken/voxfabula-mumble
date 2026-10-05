@@ -94,6 +94,7 @@ Uno script del modulo (`vf_scena_inc.nss`) apre una scena a uno o più giocatori
 - **Ordine dei messaggi**: quelli che lo script manda subito dopo l'apertura aspettano (nell'app e nella pagina) che la scena sia pronta; poi la pagina manda l'evento `pronta`.
 - **Collegamento perso**: il relay chiude le scene aperte ("disconnesso") e il Companion le toglie dallo schermo.
 - **Vista condivisa**: chi gira l'oggetto lo fa girare anche agli altri; il relay manda sempre l'ultima posizione, così la posa finale arriva.
+- **Cache**: l'overlay tiene il profilo di WebView2 in `%APPDATA%\Vox Fabula Companion\palco_cache\` e serve le pagine sempre da `127.0.0.1:47913` (se occupata, una porta a caso): così JavaScript compilato e shader restano da un avvio all'altro. Contiene solo roba del browser e si può cancellare.
 - **Prova della grafica senza Companion**: `web/palco/index.html?prova&oggetto=...` in un browser.
 
 ## Sviluppo

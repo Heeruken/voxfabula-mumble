@@ -253,6 +253,22 @@ class PalcoTest(unittest.TestCase):
         self.assertEqual(ov.avvii, 2)
 
 
+class CacheTest(unittest.TestCase):
+    def test_porta_fissa_se_libera_altrimenti_a_caso(self):
+        self.assertEqual(palco.porta_pagine(), palco.PORTA_PAGINE)
+        occupata = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        occupata.bind(("localhost", palco.PORTA_PAGINE))
+        try:
+            self.assertIsNone(palco.porta_pagine())
+        finally:
+            occupata.close()
+
+    def test_cartella_cache_nei_dati_dell_app(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(paths, "data_dir", return_value=d):
+            self.assertEqual(palco.cartella_cache(), os.path.join(d, "palco_cache"))
+            self.assertTrue(os.path.isdir(os.path.join(d, "palco_cache")))
+
+
 class ApiOverlayTest(unittest.TestCase):
     """La meta' nell'overlay: inizio() aspetta la scena, chiudi() la chiude una volta sola."""
 

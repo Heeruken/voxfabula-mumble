@@ -58,6 +58,9 @@ ATTESA_OVERLAY = 20.0        # secondi perche' l'overlay sia pronto (primo avvio
 SCENA_MAX = 3 * 3600.0       # tetto di una scena aperta
 OGGETTO_MAX = 64 * 1024 * 1024
 FUORI = -32000               # dove sta la finestra dell'overlay quando non c'e' una scena
+# Le pagine si servono sempre dalla stessa porta: stessa origine a ogni avvio, cosi' la cache di
+# WebView2 (JavaScript gia' compilato, three.js compreso) vale anche la volta dopo.
+PORTA_PAGINE = 47913
 
 
 def cartella_oggetti() -> str:
@@ -80,6 +83,26 @@ def trova_oggetto(nome: str) -> Optional[str]:
         return None
     p = os.path.join(cartella_oggetti(), nome + ".vfo")
     return p if os.path.isfile(p) else None
+
+
+def cartella_cache() -> str:
+    """Il profilo di WebView2 dell'overlay: cache del JavaScript gia' compilato e degli shader.
+    Solo roba del browser (nessun dato del giocatore): si puo' cancellare quando si vuole."""
+    d = os.path.join(paths.data_dir(), "palco_cache")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def porta_pagine() -> Optional[int]:
+    """PORTA_PAGINE se libera; se no None (porta a caso: si perde solo la cache del JavaScript)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("localhost", PORTA_PAGINE))
+        return PORTA_PAGINE
+    except OSError:
+        return None
+    finally:
+        s.close()
 
 
 def palco_attivo() -> bool:
@@ -595,7 +618,11 @@ def _overlay(porta: int, segreto: str) -> int:
                 # resta incollata al gioco mentre c'e' una scena
                 C._incolla(mia, C.area_di_gioco(stato["nwn"]) or stato["rett"])
 
-    webview.start(guardiano, private_mode=True, http_server=True)
+    # private_mode=False + cartella fissa: WebView2 non riparte da zero a ogni avvio (profilo,
+    # JavaScript compilato, shader della scheda video restano). Cookie e storage non servono a
+    # nessuna pagina del palco.
+    webview.start(guardiano, private_mode=False, storage_path=cartella_cache(),
+                  http_server=True, http_port=porta_pagine())
     api._finito.set()
     return 0
 
