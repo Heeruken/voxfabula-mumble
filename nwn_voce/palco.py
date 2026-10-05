@@ -519,22 +519,33 @@ def _overlay(porta: int, segreto: str) -> int:
         C._u32.SetWindowPos(mia, C.HWND_TOPMOST, FUORI, FUORI, 0, 0,
                             C.SWP_NOSIZE | C.SWP_NOACTIVATE)
 
-    def nascondi() -> None:
-        """Niente scena: finestra nascosta e fuori schermo, il gioco (o chi c'era) torna davanti."""
+    def nascondi(dopo_scena: bool = False) -> None:
+        """Niente scena: finestra nascosta e fuori schermo.
+        Dopo una scena il gioco torna SEMPRE davanti (e torna su se l'avevamo ridotto a icona):
+        nascondendo la nostra finestra Windows attiva la successiva, che in schermo intero senza
+        bordi spesso non e' NWN ma Steam o il desktop. Senza scena (pywebview l'ha mostrata da
+        sola) si restituisce il primo piano solo se l'avevamo preso noi."""
         with lock_vista:
             if api._scena is not None:
                 return                        # nel frattempo e' arrivata una scena
+            mia = stato["mia"]
+            davanti = C._u32.GetForegroundWindow()
+            presa_da_noi = not davanti or (mia and davanti == mia)
             try:
                 api._finestra.hide()
             except Exception:  # noqa: BLE001
                 pass
-            mia = stato["mia"]
             if mia:
                 via(mia)
-                if C._u32.GetForegroundWindow() in (mia, None, 0):
-                    # dopo una scena il gioco; al Connetti chi c'era (di solito il Companion)
-                    C.porta_davanti(stato["nwn"] or davanti_prima)
-    api._dopo_chiusa = nascondi
+            nwn = stato["nwn"] if dopo_scena else None
+            if nwn:
+                if not C.porta_davanti(nwn):
+                    time.sleep(0.15)          # Windows a volte rifiuta il primo tentativo
+                    C.porta_davanti(nwn)
+                log.info("scena finita: NWN di nuovo davanti")
+            elif presa_da_noi and davanti_prima:
+                C.porta_davanti(davanti_prima)   # al Connetti: chi c'era (di solito il Companion)
+    api._dopo_chiusa = lambda: nascondi(dopo_scena=True)
 
     def mostra(scena: dict):
         nwn = C.finestra_nwn()
