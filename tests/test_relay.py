@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import re
 import socket
 import sqlite3
@@ -93,7 +94,15 @@ class RelayCase(unittest.TestCase):
             c.close()
         self.stop.set()
         self.thread.join(5)
-        self.tmp.cleanup()
+        # Windows non cancella un file aperto: i thread delle connessioni del relay di prova
+        # possono tenere il database ancora per un attimo dopo lo stop. Si riprova, poi si lascia.
+        for _ in range(30):
+            try:
+                self.tmp.cleanup()
+                return
+            except OSError:
+                time.sleep(0.1)
+        shutil.rmtree(self.tmp.name, ignore_errors=True)
 
     def connect(self, player, token=None) -> RelayClient:
         c = RelayClient("127.0.0.1", self.port, player=player, token=token)
