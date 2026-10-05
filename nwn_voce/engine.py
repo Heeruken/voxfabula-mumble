@@ -192,6 +192,8 @@ class Engine:
             self._bridge_thread.join(timeout=3.0)
         if self._client is not None:
             self._client.close()
+        if self.palco is not None:
+            self.palco.scollega()     # scena aperta chiusa ("disconnesso"), overlay spento
         if self._mumble is not None and self._mumble.poll() is None:
             log.info("chiudo il nostro Mumble (pid %s)", self._mumble.pid)
             winproc.close_process(self._mumble.pid)

@@ -356,7 +356,8 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
         cine = {"cdkey": None, "resolved_at": -1e9, "last": 0.0, "seen_at": -1e9,
                 "pend": [], "lock": threading.Lock()}   # esiti da scrivere: (rid, esito, t)
         # scene aperte su questo client {sid: ultimo messaggio visto}, eventi del client in coda
-        palco = {"aperte": {}, "pend": [], "last": 0.0, "vista_t": {}}
+        # "viste": l'ultima vista di ogni scena da girare agli altri (vince la piu' recente)
+        palco = {"aperte": {}, "pend": [], "last": 0.0, "vista_t": {}, "viste": {}}
         send_lock = threading.Lock()              # il lettore risponde anche lui sul socket
         chiave = object()                         # questa connessione, per _Palchi
 
@@ -395,7 +396,10 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
                         if (palco_ok and proto.sid_ok(sid) and _EV_RE.match(ev) and isinstance(dati, dict)
                                 and len(json.dumps(dati)) <= proto.SCENA_DATI_MAX):
                             with cine["lock"]:
-                                palco["pend"].append((sid, ev, dati))
+                                if ev == "vista":
+                                    palco["viste"][sid] = dati     # conta solo l'ultima
+                                else:
+                                    palco["pend"].append((sid, ev, dati))
                         continue
                     if isinstance(m, dict):
                         esito = str(m.get("esito", ""))
@@ -464,12 +468,7 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
             for sid, ev, dati in pend:
                 if sid not in aperte:
                     continue                          # non e' una scena sua (o gia' chiusa)
-                if ev == "vista":
-                    t0 = palco["vista_t"].get(sid, 0.0)
-                    if palchi is not None and now - t0 >= 1.0 / VISTA_MAX_HZ:
-                        palco["vista_t"][sid] = now
-                        palchi.eco(sid, chiave, {"tipo": "vista", "da": player, "v": dati})
-                elif ev == "chiusa":
+                if ev == "chiusa":
                     esito = str(dati.get("esito", "chiusa"))[:24]
                     writer.scena_chiusa(sid, cd, esito)
                     aperte.pop(sid, None)
@@ -486,25 +485,47 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
                     d = json.loads(dati)
                 except ValueError:
                     d = {}
-                _send(proto.encode_scena(sid, tipo, d if isinstance(d, dict) else {}))
+                # aperta PRIMA di mandarla: se la connessione cade adesso, l'uscita la chiude
+                # ("disconnesso") invece di lasciarla a meta' (stato 1) per sempre
                 aperte[sid] = 0
                 if palchi is not None:
                     palchi.entra(sid, chiave, _send)
+                _send(proto.encode_scena(sid, tipo, d if isinstance(d, dict) else {}))
                 _log(f"{player!r}: scena {tipo!r} ({sid})")
             msgs, chiuse = writer.scena_giro(cd, aperte)
             for n, sid, dati in msgs:
+                if sid not in aperte:
+                    continue
+                aperte[sid] = max(aperte[sid], n)     # anche se malformato: non si rilegge ogni giro
                 try:
                     d = json.loads(dati)
                 except ValueError:
                     continue
-                if isinstance(d, dict) and sid in aperte:
+                if isinstance(d, dict):
                     _send(proto.encode_scena_msg(sid, d))
-                    aperte[sid] = max(aperte[sid], n)
             for sid in chiuse:
                 _send(proto.encode_scena_chiudi(sid))
                 aperte.pop(sid, None)
                 if palchi is not None:
                     palchi.esce(sid, chiave)
+
+        def _viste_tick(now: float) -> None:
+            """Palco: la vista (come uno gira l'oggetto) agli altri partecipanti, a ogni giro del
+            ciclo e non ogni SCENA_PERIOD: dal vivo. Si manda l'ULTIMA arrivata, cosi' la posa
+            finale (al rilascio) arriva sempre."""
+            if not palco["viste"] or palchi is None:
+                return
+            with cine["lock"]:
+                viste, palco["viste"] = palco["viste"], {}
+            for sid, dati in viste.items():
+                if sid not in palco["aperte"]:
+                    continue                          # non e' una scena sua (o gia' chiusa)
+                if now - palco["vista_t"].get(sid, -1e9) < 1.0 / VISTA_MAX_HZ:
+                    with cine["lock"]:
+                        palco["viste"].setdefault(sid, dati)   # troppo presto: al prossimo giro
+                    continue
+                palco["vista_t"][sid] = now
+                palchi.eco(sid, chiave, {"tipo": "vista", "da": player, "v": dati})
 
         # TEST fantoccio: lo PIANTIAMO una volta sola, dove ti vediamo la prima
         # volta (il tuo punto di spawn), e li' RESTA FERMO. Sei TU che ti allontani:
@@ -521,6 +542,7 @@ def _handle(conn: socket.socket, addr, db_path: str, server_id: str,
             now = time.monotonic()
             _cinema_tick(now)
             _scena_tick(now)
+            _viste_tick(now)
             if now - last_roster >= roster_period:
                 last_roster = now
                 roster = prov.read_roster()

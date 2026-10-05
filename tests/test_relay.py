@@ -454,6 +454,29 @@ class PalcoTest(RelayCase):
         self.assertEqual(sorted(self.sql("SELECT sid, ev FROM vf_scena_ev")),
                          [("dd04", "chiusa"), ("dd05", "chiusa")])
 
+    def test_vista_finale_arriva_sempre(self):
+        # si gira l'oggetto per 2 s a 10 Hz (come esamina.js): agli altri deve arrivare l'ULTIMA
+        # posa (quella del rilascio), non una vecchia
+        a, _ = self.client_palco("Tester")
+        b, ric_b = self.client_palco("Amico")
+        self.apri("cc07", cdkey="KTEST")
+        self.apri("cc07", cdkey="KAMICO")
+        self.assertTrue(self.wait_for(lambda: ric_b))
+        for i in range(20):
+            a.send_scena_ev("cc07", "vista", {"q": [0, 0, 0, i]})
+            time.sleep(0.1)
+        self.assertTrue(self.wait_for(lambda: ric_b[-1][3]["v"]["q"][3] == 19))
+        arrivate = [m[3]["v"]["q"][3] for m in ric_b[1:]]
+        self.assertEqual(arrivate, sorted(arrivate))           # in ordine
+        self.assertGreaterEqual(len(arrivate), 10)              # dal vivo, non ogni tanto
+
+    def test_client_avvisato_quando_cade_il_relay(self):
+        a, ric = self.client_palco("Tester")
+        self.apri("ff08")
+        self.assertTrue(self.wait_for(lambda: ric))
+        a.close()
+        self.assertTrue(self.wait_for(lambda: ric[-1][0] == "perso"))
+
     def test_app_senza_palco_assente(self):
         self.connect("Tester")
         self.apri("ee06")

@@ -6,17 +6,27 @@
 //           invia(ev, dati),            // al server (lo script decide)
 //           su(fn),                     // fn(msg) per ogni messaggio dello script (o "vista" di un altro)
 //           chiudi(esito),
+//           allaFine(fn),               // fn() quando la scena finisce (via WebGL, timer, ...)
+//           finita,                     // true dopo la fine: chi aspettava qualcosa si ferma
 //           azioni(lista), diario(testo, classe, piccolo), tiro(msg) }   // pezzi comuni
 // Tutto quello che conta (tiri, segreti) arriva dal server: la pagina mostra e riferisce.
+//
+// La pagina NON si ricarica tra una scena e l'altra (con pywebview 6 ricaricare = la finestra
+// ricompare da sola): finita una scena si ripulisce e torna ad aspettare la prossima.
+// I messaggi dello script arrivati mentre la scena si prepara (modello, texture) aspettano e
+// passano appena e' pronta; poi la pagina manda "pronta" allo script.
 //
 // Aperta in un browser normale (senza Companion) parte in PROVA: dati finti e tiri locali,
 // solo per lavorare alla grafica.
 
-import { tira, dopoDadi } from './dado.js';
+import { tira, dopoDadi, ferma } from './dado.js';
 
 const $ = id => document.getElementById(id);
-const ascoltatori = [];
+let ascoltatori = [];
 let chiusa = false;
+let scenaPronta = false;      // la scena ha registrato i suoi ascoltatori
+let inAttesa = [];            // messaggi arrivati prima
+let giro = 0;                 // quale scena (una vecchia che finisce di caricare se ne accorge)
 
 function apiProva() {
   const q = new URLSearchParams(location.search);
@@ -41,8 +51,11 @@ function apiProva() {
     return ok;
   };
   const fatti = new Set();
+  let data = false;
   return {
     async inizio() {
+      if (data) return new Promise(() => {});      // chiusa: in prova non ne arrivano altre
+      data = true;
       // alla pagina non vanno CD e segreti, come in gioco
       const pagina = Object.assign({}, dati, { punti: (dati.punti || []).map(p => ({ id: p.id, etichetta: p.etichetta, lato: p.lato, pos: p.pos })) });
       return { sid: 'prova', tipo, dati: pagina };
@@ -70,7 +83,7 @@ function apiProva() {
       }
       return true;
     },
-    async chiudi(esito) { console.log('[prova] chiudi', esito); document.body.innerHTML = ''; },
+    async chiudi(esito) { console.log('[prova] chiudi', esito); },
   };
 }
 
@@ -89,17 +102,66 @@ function consegna(msg) {
 // In ordine d'arrivo; tutto quello che segue un tiro aspetta che il dado si fermi (stessa
 // sequenza su ogni schermo). La "vista" (l'oggetto girato da un altro) passa subito.
 let filo = Promise.resolve();
-window.palcoRicevi = msg => {
-  if (!msg || typeof msg !== 'object') return;
+function smista(msg) {
   if (msg.tipo === 'vista') return consegna(msg);
   filo = filo.then(() => (msg.tipo === 'tiro' ? consegna(msg) : dopoDadi().then(() => consegna(msg))));
+}
+window.palcoRicevi = msg => {
+  if (!msg || typeof msg !== 'object' || chiusa) return;
+  if (!scenaPronta) inAttesa.push(msg);
+  else smista(msg);
 };
 
-function chiudi(esito = 'chiusa') {
+let palcoAttivo = null;
+
+// via tutto quello che la scena ha messo in pagina; poi si aspetta la prossima
+function ripulisci() {
+  giro++;
+  if (palcoAttivo) {
+    palcoAttivo.finita = true;
+    for (const fn of palcoAttivo._allaFine.splice(0)) {
+      try { fn(); } catch (e) { console.error(e); }
+    }
+  }
+  palcoAttivo = null;
+  ascoltatori = [];
+  inAttesa = [];
+  scenaPronta = false;
+  filo = Promise.resolve();
+  ferma($('dado'));
+  document.body.classList.remove('in-scena', 'oscura');
+  $('titolo').textContent = '';
+  $('scena').innerHTML = '';
+  $('azioni').innerHTML = '';
+  $('diario').innerHTML = '';
+  $('carica').hidden = true;
+}
+
+let finendo = null;
+function fine() {
+  if (finendo) return finendo;
+  ripulisci();
+  // un attimo per la dissolvenza, poi di nuovo in attesa (inizio() manda "pronto" all'app)
+  finendo = new Promise(r => setTimeout(r, 50)).then(() => { finendo = null; chiusa = false; avvia(); });
+  return finendo;
+}
+
+async function chiudi(esito = 'chiusa') {
   if (chiusa) return;
   chiusa = true;
-  api().chiudi(esito);
+  try { await api().chiudi(esito); } catch (e) { console.error(e); }
+  fine();
 }
+
+// chiusa dall'app (lo script, la rete, l'app che si chiude): l'esito l'ha gia' mandato lei.
+// Puo' arrivare anche prima che la pagina abbia cominciato la scena: allora la salta.
+const chiuseDallApp = new Set();
+window.palcoFine = sid => {
+  chiuseDallApp.add(sid);
+  if (!palcoAttivo || palcoAttivo.sid !== sid || (chiusa && finendo)) return;
+  chiusa = true;
+  fine();
+};
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); chiudi('esc'); } });
 document.addEventListener('contextmenu', e => e.preventDefault());
@@ -131,18 +193,25 @@ function diario(testo, classe = '', piccolo = '') {
   v.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
-let palcoAttivo = null;
-
 async function tiro(m) {
+  const di = palcoAttivo;
   await tira($('dado'), m, () => (palcoAttivo && palcoAttivo.posizioneDado ? palcoAttivo.posizioneDado(m) : null));
+  if (!di || di.finita) return;              // la scena e' finita mentre il dado rotolava
   diario(`${m.chi}: ${m.abilita} ${m.d20} ${m.mod >= 0 ? '+' : '-'} ${Math.abs(m.mod)} = ${m.tot}` +
          (m.cd ? ` contro ${m.cd}` : ''), m.ok === undefined ? '' : m.ok ? 'ok' : 'ko',
          m.ok === undefined ? '' : m.ok ? 'riuscito' : 'fallito');
 }
 
+let aspetto = false;
 async function avvia() {
-  const ini = await api().inizio();          // nell'overlay aspetta (nascosto) che arrivi una scena
+  if (aspetto) return;                       // c'e' gia' chi aspetta la prossima scena
+  aspetto = true;
+  let ini;
+  try { ini = await api().inizio(); } finally { aspetto = false; }   // nell'overlay: nascosto, in attesa
   if (!ini) return;                          // l'overlay si sta chiudendo
+  if (chiuseDallApp.has(ini.sid)) return avvia();   // chiusa prima ancora di cominciare
+  const mio = ++giro;
+  chiusa = false;
   const dati = ini.dati || {};
   document.body.classList.toggle('oscura', !!dati.oscura);
   document.body.classList.add('in-scena');
@@ -160,6 +229,11 @@ async function avvia() {
     chiudi, azioni, diario, tiro,
     prova: PROVA,
     posizioneDado: null,        // la scena puo' dire dove far rotolare un tiro (es. accanto a un pallino)
+    finita: false,
+    _allaFine: [],
+    allaFine(fn) {              // se e' gia' finita (caricava ancora): subito
+      if (palco.finita) { try { fn(); } catch (e) { console.error(e); } } else palco._allaFine.push(fn);
+    },
   };
   palcoAttivo = palco;
   // messaggi comuni: le scene ascoltano gli stessi e aggiungono i loro
@@ -171,17 +245,23 @@ async function avvia() {
   });
   const carica = $('carica');
   const tCarica = setTimeout(() => { carica.hidden = false; }, 250);   // solo se ci mette un po'
+  palco.allaFine(() => clearTimeout(tCarica));
+  let ok = false;
   try {
     const mod = await import('./scene/' + ini.tipo + '.js');
     await mod.default(palco);
-    clearTimeout(tCarica);
-    carica.hidden = true;
+    ok = true;
   } catch (e) {
-    clearTimeout(tCarica);
-    carica.hidden = true;
     console.error(e);
-    diario('Questa scena non si apre: ' + e.message, 'ko');
+    if (mio === giro) diario('Questa scena non si apre: ' + e.message, 'ko');
   }
+  if (mio !== giro) return;                  // finita mentre si preparava
+  clearTimeout(tCarica);
+  carica.hidden = true;
+  // la scena ascolta: passano i messaggi arrivati nel frattempo, in ordine
+  scenaPronta = true;
+  for (const m of inAttesa.splice(0)) smista(m);
+  if (ok) palco.invia('pronta', {});
 }
 
 // la scena piu' usata si carica SUBITO (three.js compreso), mentre l'overlay aspetta nascosto:

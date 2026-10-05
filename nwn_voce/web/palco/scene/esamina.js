@@ -116,6 +116,14 @@ function muoviPulviscolo(p, t) {
   p.geometry.attributes.position.needsUpdate = true;
 }
 
+// geometrie, materiali e texture di un oggetto three.js (WebGL non li libera da solo)
+function libera(obj) {
+  obj.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    for (const m of [].concat(o.material || [])) { if (m.map) m.map.dispose(); m.dispose(); }
+  });
+}
+
 function segnaposto() {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.5, 0),
@@ -131,12 +139,26 @@ export default async function (palco) {
   chi.id = 'chi';
   document.body.appendChild(chi);
 
-  const renderer = new THREE.WebGLRenderer({ canvas: tela, antialias: true, alpha: true });
+  // fine della scena: la pagina non si ricarica, quindi si libera tutto (WebGL compreso: i
+  // contesti sono pochi e una scena dopo l'altra finirebbero)
+  let raf = 0, chiTimer = 0, renderer = null, scene = null;
+  palco.allaFine(() => {
+    cancelAnimationFrame(raf);
+    clearTimeout(chiTimer);
+    chi.remove();
+    if (scene) {
+      libera(scene);
+      if (scene.environment) scene.environment.dispose();
+    }
+    if (renderer) { renderer.dispose(); renderer.forceContextLoss(); }
+  });
+
+  renderer = new THREE.WebGLRenderer({ canvas: tela, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
   renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
-  const scene = new THREE.Scene();
+  scene = new THREE.Scene();
   scene.environment = ambiente(renderer);
   scene.add(new THREE.HemisphereLight(0xfff4e0, 0x1c1638, .55));
   const sole = new THREE.DirectionalLight(0xffe9c8, 2.4);      // luce principale, calda
@@ -152,9 +174,11 @@ export default async function (palco) {
   scene.add(perno);
   let dati = null;
   try { dati = await palco.oggetto(); } catch (e) { console.error(e); }
+  if (palco.finita) return;                     // chiusa mentre arrivava il modello
   let modello, lo, hi;
   if (dati && dati.m && dati.m.length) {
     modello = await costruisci(dati);
+    if (palco.finita) return libera(modello);   // chiusa mentre si caricavano le texture
     lo = dati.lo; hi = dati.hi;
   } else {
     ({ g: modello, lo, hi } = segnaposto());
@@ -314,7 +338,6 @@ export default async function (palco) {
     segni.set(id, s);
   }
 
-  let chiTimer = 0;
   palco.su(m => {
     if (m.tipo === 'vista' && m.v && Array.isArray(m.v.q)) {
       if (performance.now() - ultimoTocco < MIA_PER) return;      // lo sto girando io
@@ -338,7 +361,8 @@ export default async function (palco) {
   // ---- disegno
   const occhio = new THREE.Vector3(), mondo = new THREE.Vector3();
   function giro() {
-    requestAnimationFrame(giro);
+    if (palco.finita) return;
+    raf = requestAnimationFrame(giro);
     const w = tela.clientWidth, h = tela.clientHeight;
     if (tela.width !== Math.floor(w * renderer.getPixelRatio())) {
       renderer.setSize(w, h, false);
@@ -379,5 +403,5 @@ export default async function (palco) {
     renderer.render(scene, camera);
   }
   giro();
-  palco.invia('pronta', {});
+  // "pronta" allo script la manda palco.js, dopo aver passato i messaggi arrivati nel frattempo
 }

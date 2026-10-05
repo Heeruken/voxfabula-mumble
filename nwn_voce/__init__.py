@@ -8,7 +8,7 @@ che il server chiede (cinema.py / regia.py). Fino alla 1.2.x si chiamava
 (Il pacchetto Python si chiama ancora nwn_voce: nome interno, non si vede.)
 """
 
-__version__ = "1.3.1"
+__version__ = "1.3.1.1"
 APP_NAME = "Vox Fabula Companion"
 # Il server della voce: un nome che punta sempre a casa del server (lo tiene
 # aggiornato C:\NWN\scripts\ddns_voice.py quando cambia l'IP). I giocatori

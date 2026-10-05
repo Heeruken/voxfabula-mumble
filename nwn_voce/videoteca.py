@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import threading
 import urllib.error
 import urllib.request
 from typing import Optional
@@ -149,9 +150,25 @@ def _scarica(voce: dict, cartella: str, base: str = BASE) -> bool:
         return False
 
 
+_LOCK_SCAFFALI: dict = {}
+_LOCK_SCAFFALI_LOCK = threading.Lock()
+
+
+def _lock_di(sc: "Scaffale") -> threading.Lock:
+    with _LOCK_SCAFFALI_LOCK:
+        return _LOCK_SCAFFALI.setdefault(sc.base, threading.Lock())
+
+
 def aggiorna(registro, catalogo: Optional[dict] = None, sc: Scaffale = VIDEO) -> int:
     """Allinea la cartella dello scaffale al catalogo del server. Ritorna quanti file ha
-    scaricato. ``catalogo`` gia' letto: solo per i test."""
+    scaricato. ``catalogo`` gia' letto: solo per i test.
+    Uno alla volta per scaffale: il Connetti e una scena che chiede un oggetto non ancora
+    scaricato non devono scrivere insieme lo stesso .part e il catalogo locale."""
+    with _lock_di(sc):
+        return _aggiorna(registro, catalogo, sc)
+
+
+def _aggiorna(registro, catalogo: Optional[dict], sc: Scaffale) -> int:
     cartella = sc.cartella()
     if catalogo is None:
         try:
