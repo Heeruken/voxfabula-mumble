@@ -2,7 +2,8 @@
 
 Il programma che i giocatori di Vox Fabula tengono aperto accanto a **Neverwinter Nights: Enhanced Edition**. Fino alla 1.2.x si chiamava *Vox Fabula Voice*. Fa due cose:
 - **voce di prossimità**;
-- **cinema**: i video che il server chiede (l'ingresso in un evento, un finale), mostrati sopra il gioco.
+- **cinema**: i video che il server chiede (l'ingresso in un evento, un finale), mostrati sopra il gioco;
+- **palco** (dalla 1.3.1): scene interattive sopra il gioco, per esempio un oggetto in 3D da girare ed esaminare.
 
 **Voce di prossimità.** Più un personaggio è lontano, più lo senti piano. Chi **sussurra** si sente entro 4 m, chi **parla** entro 12 m, chi **urla** entro 35 m. Personaggi in aree diverse non si sentono.
 
@@ -54,6 +55,8 @@ server NWN ──(posizioni nel DB)──► relay :27890 ──TCP──► Vox
 | `nwn_voce/cinema.py` | il lettore (`--video <file>`): finestra sopra l'area di gioco di NWN |
 | `nwn_voce/videoteca.py` | scarica e verifica i video del server |
 | `nwn_voce/sigillo.py` | sigilla e apre i video `.vfv` (niente spoiler) |
+| `nwn_voce/palco.py` | scene dal relay → overlay trasparente in un processo a parte (`--palco`) |
+| `nwn_voce/web/palco/` | le pagine delle scene (`scene/<tipo>.js`), three.js in `vendor/` (MIT) |
 
 ## Cinema: video chiesti dal server
 
@@ -83,9 +86,19 @@ tabella vf_cinema nel DB "nwn_voice"  ──►  relay  ──►  Companion di 
 - **Attenzione, regola per gli script**: il DB voce è in modalità *delete* (non WAL). Una SELECT letta a metà in una funzione che poi chiama `DelayCommand` resta viva e tiene il DB bloccato, e il relay non riesce più a scrivere. Ogni SELECT va in una funzione a parte, letta fino in fondo.
 - **Collaudo**: `python -m unittest tests.test_relay tests.test_cinema` (relay e app); `voxfabula/docs/cinema/collaudo/collaudo_cinema.py` fa la catena intera su nwserver vero con Companion finti. `prove_cinema/prova_completa.py` serve per la prova in partita locale con il lettore vero.
 
+## Palco: scene interattive
+
+Uno script del modulo (`vf_scena_inc.nss`) apre una scena a uno o più giocatori scrivendo in `vf_scena`; il relay la manda al Companion, che la mostra in un overlay **trasparente** sopra l'area di gioco. Gli eventi del giocatore tornano in `vf_scena_ev`, i messaggi dello script vanno in `vf_scena_msg`. Le decisioni (tiri, segreti) le prende sempre lo script. Protocollo in `net_protocol.py`.
+
+- **Overlay pronto**: parte nascosto al Connetti, così la prima scena compare in meno di un secondo; si spegne al Disconnetti e quando si spengono le scene. La finestra sta **fuori schermo** finché non c'è una scena, e la pagina **non si ricarica** mai tra una scena e l'altra (si ripulisce da sola). Il motivo: pywebview 6.x, con `transparent=True` su Windows, mostra e attiva la finestra a ogni navigazione anche se creata `hidden` (`edgechromium.on_navigation_start`); senza queste precauzioni compariva un riquadro grigio, sopra tutto, che rubava il focus a NWN. Un guardiano la rinasconde comunque se compare da sola.
+- **Ordine dei messaggi**: quelli che lo script manda subito dopo l'apertura aspettano (nell'app e nella pagina) che la scena sia pronta; poi la pagina manda l'evento `pronta`.
+- **Collegamento perso**: il relay chiude le scene aperte ("disconnesso") e il Companion le toglie dallo schermo.
+- **Vista condivisa**: chi gira l'oggetto lo fa girare anche agli altri; il relay manda sempre l'ultima posizione, così la posa finale arriva.
+- **Prova della grafica senza Companion**: `web/palco/index.html?prova&oggetto=...` in un browser.
+
 ## Sviluppo
 
-Serve Python 3.10 con `pyinstaller`, `pywebview`, `pythonnet`, più **Inno Setup 6** per l'installer.
+Serve Python 3.10 con `pyinstaller`, `pywebview` (6.x: vedi "Palco" per il suo comportamento con le finestre trasparenti), `pythonnet`, più **Inno Setup 6** per l'installer.
 
 ```
 python -m nwn_voce                          # avvia da sorgente
@@ -146,6 +159,11 @@ Senza certificato l'avviso "editore sconosciuto" resta. Le cose gratuite che lo 
 2. **Segnala il file a Microsoft** (<https://www.microsoft.com/wdsi/filesubmission>, "Software developer"), così Defender lo impara.
 3. **Cambia versione il meno possibile**: SmartScreen costruisce la reputazione **per singolo file**. Ogni nuova build riparte da zero, quindi meglio poche versioni scaricate da tanti che tante versioni scaricate da pochi.
 4. **Distribuisci sempre dallo stesso posto**, per esempio le Release di GitHub, e con le impronte SHA-256 in vista.
+
+## Novità della 1.3.1
+
+- **Palco**: scene interattive sopra il gioco (esaminare un oggetto in 3D), con tiri e vista sincronizzati tra i giocatori; interruttore in "Cosa fa sul tuo PC".
+- Il server vede chi ha il Companion collegato (`vf_companion`) e quali video esistono (`vf_video`): niente nero inutile se il video non si può mostrare.
 
 ## Novità della 1.3.0
 

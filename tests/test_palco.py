@@ -50,7 +50,7 @@ def manda(s, d):
 
 class FintoOverlay:
     """Fa l'overlay: si presenta, dice "pronto", e per ogni scena chiama ``scena(sock, apri, righe)``;
-    poi torna "pronto" (come dopo il ricaricamento della pagina)."""
+    poi torna "pronto" (come la pagina quando si e' ripulita)."""
 
     def __init__(self, scena, segreto_giusto=True):
         self.scena, self.segreto_giusto = scena, segreto_giusto
@@ -194,6 +194,64 @@ class PalcoTest(unittest.TestCase):
         self.apri(FintoOverlay(lambda *a: None, segreto_giusto=False))
         self.assertEqual(self.client.ev, [("ab12", "chiusa", {"esito": "errore"})])
 
+    def test_messaggi_arrivati_prima_dell_overlay_aspettano(self):
+        # lo script apre la scena e manda subito un messaggio: il relay li consegna insieme,
+        # quando l'overlay non ha ancora la scena. Il messaggio aspetta e arriva DOPO "apri".
+        arrivati = []
+
+        def fa(s, apri, righe):
+            arrivati.append(json.loads(righe.readline()))
+            arrivati.append(json.loads(righe.readline()))
+            manda(s, {"ev": "chiusa", "dati": {"esito": "esc"}})
+        ov = FintoOverlay(fa)
+        with mock.patch.object(palco.subprocess, "Popen", side_effect=ov.popen):
+            self.palco.evento("apri", "ab12", "esamina", {}, self.client)
+            self.palco.evento("msg", "ab12", "", {"tipo": "testo", "testo": "uno"}, self.client)
+            self.palco.evento("msg", "ab12", "", {"tipo": "testo", "testo": "due"}, self.client)
+            fine = time.time() + 5
+            while not self.client.ev and time.time() < fine:
+                time.sleep(0.02)
+        self.assertEqual([m["msg"]["testo"] for m in arrivati], ["uno", "due"])
+        self.assertEqual(self.client.ev, [("ab12", "chiusa", {"esito": "esc"})])
+        self.assertEqual(self.palco._coda, {})
+
+    def test_relay_perso_chiude_la_scena(self):
+        # il collegamento cade a meta' scena: niente scena "zombie" sullo schermo
+        arrivati = []
+
+        def fa(s, apri, righe):
+            manda(s, {"ev": "pronta", "dati": {}})
+            m = json.loads(righe.readline())
+            arrivati.append(m)
+            manda(s, {"ev": "chiusa", "dati": {"esito": m["chiudi"]}})
+        ov = FintoOverlay(fa)
+        t = threading.Thread(target=self.apri, args=(ov,))
+        t.start()
+        fine = time.time() + 5
+        while not self.client.ev and time.time() < fine:
+            time.sleep(0.02)
+        self.palco.evento("perso", "", "", {}, FintoClient())      # un ALTRO client: non e' la sua
+        self.palco.evento("perso", "", "", {}, self.client)
+        t.join(5)
+        self.assertEqual(arrivati, [{"chiudi": "disconnesso"}])
+        self.assertEqual(self.client.ev[-1], ("ab12", "chiusa", {"esito": "disconnesso"}))
+
+    def test_scollega_spegne_l_overlay_ma_non_quello_nuovo(self):
+        ov = FintoOverlay(lambda *a: None)
+        with mock.patch.object(palco.subprocess, "Popen", side_effect=ov.popen):
+            self.assertIsNotNone(self.palco._overlay_pronto())
+            vecchio = self.palco._ov
+            self.palco.scollega()                       # Disconnetti...
+            nuovo = self.palco._overlay_pronto()        # ...e subito Connetti
+            fine = time.time() + 5
+            while vecchio["vivo"] and time.time() < fine:
+                time.sleep(0.02)
+        self.assertFalse(vecchio["vivo"])
+        self.assertIsNotNone(nuovo)
+        self.assertIs(self.palco._ov, nuovo)
+        self.assertTrue(nuovo["vivo"])
+        self.assertEqual(ov.avvii, 2)
+
 
 class ApiOverlayTest(unittest.TestCase):
     """La meta' nell'overlay: inizio() aspetta la scena, chiudi() la chiude una volta sola."""
@@ -211,12 +269,59 @@ class ApiOverlayTest(unittest.TestCase):
         self.assertEqual(risultato, [{"sid": "ab12", "tipo": "esamina", "dati": {"x": 1}}])
         chiamate = []
         api._dopo_chiusa = lambda: chiamate.append(1)
-        api.chiudi("esc")
-        api.chiudi("esc")                        # la seconda non fa niente
+        self.assertEqual(api.chiudi("esc"), "ab12")    # la pagina l'aveva: va ripulita
+        self.assertIsNone(api.chiudi("esc"))           # la seconda non fa niente
         time.sleep(0.1)
         self.assertEqual(chiamate, [1])
         a.close()
         b.close()
+
+    def test_chiusa_prima_che_la_pagina_la_prenda(self):
+        # il server chiude la scena prima che la pagina l'abbia presa: la pagina resta in
+        # attesa (non si ferma per sempre) e l'app sa che e' di nuovo pronta
+        a, b = socket.socketpair()
+        letto = b.makefile("rb")
+        api = palco._Api(a)
+        api._dopo_chiusa = lambda: None
+        risultato = []
+        t = threading.Thread(target=lambda: risultato.append(api.inizio()))
+        api._scena = {"sid": "ab12", "tipo": "esamina"}       # arrivata ma non ancora presa
+        self.assertIsNone(api.chiudi("server"))               # la pagina non l'aveva: niente da ripulire
+        t.start()
+        righe = [json.loads(letto.readline()) for _ in range(3)]
+        self.assertIn({"ev": "chiusa", "dati": {"esito": "server"}}, righe)
+        self.assertEqual(righe.count({"pronto": 1}), 2)
+        time.sleep(0.7)
+        self.assertEqual(risultato, [])                        # sempre in attesa
+        api.nuova({"sid": "cd34", "tipo": "esamina", "dati": {}})
+        t.join(3)
+        self.assertEqual(risultato[0]["sid"], "cd34")
+        api._finito.set()
+        a.close()
+        b.close()
+
+
+class PagineTest(unittest.TestCase):
+    """Le pagine del palco: ogni import deve trovare il suo file (three.js compreso)."""
+
+    def test_import_risolti(self):
+        import re
+        base = palco.cartella_pagine()
+        for radice, _d, files in os.walk(base):
+            for f in files:
+                if not f.endswith(".js") or "vendor" in radice:
+                    continue
+                testo = open(os.path.join(radice, f), encoding="utf-8").read()
+                for imp in re.findall(r"""(?:from|import)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""", testo):
+                    if imp.endswith("/"):              # import('./scene/' + tipo + '.js')
+                        continue
+                    dest = os.path.normpath(os.path.join(radice, imp))
+                    self.assertTrue(os.path.isfile(dest), f"{f}: manca {imp}")
+
+    def test_three_e_licenza(self):
+        v = os.path.join(palco.cartella_pagine(), "vendor")
+        self.assertTrue(os.path.isfile(os.path.join(v, "three.module.js")))
+        self.assertTrue(os.path.isfile(os.path.join(v, "LICENSE-three.txt")))
 
 
 if __name__ == "__main__":

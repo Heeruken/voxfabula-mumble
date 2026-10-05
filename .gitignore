@@ -5,7 +5,7 @@ __pycache__/
 *.py[cod]
 
 # Mumble portatile: binari di terzi, non versionati (vedi README > Build)
-vendor/
+/vendor/
 
 # artefatti di compilazione del plugin (la DLL invece SI' versiona: serve MSVC per rifarla)
 plugin/*.obj

@@ -156,6 +156,12 @@ class Api:
         """Interruttore "Scene del server": spento = le scene non si aprono."""
         settings.update(palco_server=bool(on))
         self._registro.scrivi("palco_interruttore", acceso=1 if on else 0)
+        pc = self._engine.palco
+        if pc is not None:
+            if not on:
+                pc.scollega(esito="disattivato")   # niente overlay nascosto se le scene sono spente
+            elif self._engine._client is not None:
+                pc.prepara()              # collegati: pronto per la prossima scena
         return {"ok": True}
 
     def save_lang(self, lang) -> bool:

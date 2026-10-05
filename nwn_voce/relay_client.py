@@ -38,7 +38,8 @@ class RelayClient:
         # che sappiamo mostrarli; deve ritornare subito (il lavoro va in un altro thread).
         self.on_video = on_video
         # on_scena(tipo_msg, sid, tipo, dati): il palco (scene interattive). tipo_msg e'
-        # "apri" | "msg" | "chiudi". Come on_video: deve ritornare subito.
+        # "apri" | "msg" | "chiudi" | "perso" (collegamento caduto: il relay ha gia' chiuso le
+        # scene aperte, "disconnesso"; sid vuoto). Come on_video: deve ritornare subito.
         self.on_scena = on_scena
         self._send_lock = threading.Lock()
         self._lock = threading.Lock()
@@ -134,6 +135,7 @@ class RelayClient:
     def _run(self) -> None:
         backoff = 1.0
         while not self._stop.is_set():
+            collegato = False
             try:
                 sock = socket.create_connection((self.host, self.port), timeout=5.0)
                 sock.settimeout(None)
@@ -141,6 +143,7 @@ class RelayClient:
                     self._sock = sock
                     self._connected = True
                 log.info("relay %s:%s connesso", self.host, self.port)
+                collegato = True
                 backoff = 1.0
                 with self._send_lock:
                     sock.sendall(proto.encode_hello(self.player, self.token,
@@ -194,6 +197,11 @@ class RelayClient:
                         except OSError:
                             pass
                         self._sock = None
+            if collegato and self.on_scena is not None:
+                try:
+                    self.on_scena("perso", "", "", {})
+                except Exception:  # noqa: BLE001 -- mai far cadere la voce
+                    log.exception("scena: collegamento perso non gestito")
             if self._stop.is_set():
                 break
             self._stop.wait(backoff)

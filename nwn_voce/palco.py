@@ -14,8 +14,17 @@ Due meta':
 
 L'overlay si avvia GIA' al Connetti e resta pronto, nascosto, con la pagina caricata: quando
 arriva una scena compare subito (avviare processo e browser costava qualche secondo). Finita
-la scena si nasconde e ricarica la pagina, pronto per la prossima. Protocollo:
-    app -> overlay:  {"apri": {sid, tipo, dati, oggetto}}  {"msg": {..}}  {"chiudi": 1}  {"esci": 1}
+la scena si nasconde e la pagina si ripulisce da sola, pronta per la prossima. Si chiude al
+Disconnetti e quando si spengono le scene.
+
+Nascosto DAVVERO: pywebview 6.x, con una finestra trasparente, la mostra (Show + Activate) a
+ogni navigazione della pagina anche se creata ``hidden`` (edgechromium.on_navigation_start).
+Per questo la finestra nasce FUORI SCHERMO, la pagina non si ricarica mai tra una scena e
+l'altra, e un guardiano la rinasconde (ridando il gioco in primo piano) se compare da sola.
+
+Protocollo:
+    app -> overlay:  {"apri": {sid, tipo, dati, oggetto}}  {"msg": {..}}  {"chiudi": 1 | "<esito>"}
+                     {"esci": 1}
     overlay -> app:  {"segreto": ..} (il primo)  {"pronto": 1} (pagina in attesa di una scena)
                      {"ev": .., "dati": {..}}  ("chiusa" = scena finita)
 
@@ -48,6 +57,7 @@ TITOLO = APP_NAME + " - Palco"
 ATTESA_OVERLAY = 20.0        # secondi perche' l'overlay sia pronto (primo avvio: processo + browser)
 SCENA_MAX = 3 * 3600.0       # tetto di una scena aperta
 OGGETTO_MAX = 64 * 1024 * 1024
+FUORI = -32000               # dove sta la finestra dell'overlay quando non c'e' una scena
 
 
 def cartella_oggetti() -> str:
@@ -95,10 +105,14 @@ class Palco:
 
     def __init__(self, registro) -> None:
         self.registro = registro
-        self._lock = threading.Lock()          # la scena in corso
+        self._lock = threading.Lock()          # la scena in corso (e le code)
         self._ov_lock = threading.Lock()       # l'overlay (avvio)
         self._ov: Optional[dict] = None        # {proc, conn, pronto, vivo, invio}
-        self._scena: Optional[dict] = None     # {sid, client, fine, esito}
+        self._scena: Optional[dict] = None     # {sid, client, fine, esito, ov}
+        # scene annunciate dal relay ma non ancora sull'overlay: i messaggi che lo script manda
+        # subito dopo l'apertura aspettano qui, in ordine {sid: {"client", "righe"}}
+        self._coda: dict = {}
+        self._gen_ov = 0                       # +1 a ogni scollega: gli overlay di prima si spengono
 
     # -- dal motore
     def prepara(self) -> None:
@@ -106,12 +120,30 @@ class Palco:
         if palco_attivo():
             threading.Thread(target=self._overlay_pronto, name="palco-prepara", daemon=True).start()
 
+    def scollega(self, client=None, esito: str = "disconnesso") -> None:
+        """Disconnetti (o scene spente): chiude la scena aperta ("disconnesso") e spegne l'overlay
+        senza aspettare. Solo quello avviato FINO A ORA: se intanto si ricollega, il nuovo resta."""
+        self._perso(client, esito)
+        self._gen_ov += 1
+        threading.Thread(target=self._spegni_prima_di, args=(self._gen_ov,),
+                         name="palco-chiudi", daemon=True).start()
+
+    def _spegni_prima_di(self, gen: int) -> None:
+        with self._ov_lock:                    # aspetta anche un overlay che sta partendo
+            ov = self._ov
+            if ov is None or ov.get("gen", 0) >= gen:
+                return
+            self._ov = None
+        self._spegni(ov)
+
     def chiudi_tutto(self) -> None:
         """L'app si chiude: via l'overlay."""
         with self._ov_lock:
             ov, self._ov = self._ov, None
-        if ov is None:
-            return
+        if ov is not None:
+            self._spegni(ov)
+
+    def _spegni(self, ov: dict) -> None:
         self._scrivi(ov, {"esci": 1})
         try:
             ov["proc"].wait(timeout=5)
@@ -124,19 +156,39 @@ class Palco:
     # -- dal relay
     def evento(self, tipo_msg: str, sid: str, tipo: str, dati: dict, client) -> None:
         if tipo_msg == "apri":
+            with self._lock:
+                self._coda[sid] = {"client": client, "righe": []}
             threading.Thread(target=self._apri, args=(sid, tipo, dati, client),
                              name="palco", daemon=True).start()
         elif tipo_msg == "msg":
             self._alla_scena(sid, {"msg": dati})
         elif tipo_msg == "chiudi":
             self._alla_scena(sid, {"chiudi": 1})
+        elif tipo_msg == "perso":
+            self._perso(client)               # relay caduto: il server ha gia' chiuso le scene
+
+    def _perso(self, client=None, esito: str = "disconnesso") -> None:
+        """Il collegamento col relay non c'e' piu' (o le scene sono state spente): la scena
+        aperta, o in arrivo, di quel client si chiude (il relay l'ha gia' chiusa per lo script)."""
+        with self._lock:
+            for c in self._coda.values():
+                if client is None or c["client"] is client:
+                    c["righe"].append({"chiudi": esito})
+            sc = self._scena
+            ov = sc.get("ov") if sc is not None and (client is None or sc["client"] is client) else None
+        if ov is not None:
+            self._scrivi(ov, {"chiudi": esito})
 
     def _alla_scena(self, sid: str, d: dict) -> None:
         with self._lock:
+            attesa = self._coda.get(sid)
+            if attesa is not None:            # la scena sta ancora arrivando sull'overlay
+                attesa["righe"].append(d)
+                return
             sc = self._scena
-        if sc is None or sc["sid"] != sid or self._ov is None:
-            return
-        self._scrivi(self._ov, d)
+            ov = sc.get("ov") if sc is not None and sc["sid"] == sid else None
+        if ov is not None:
+            self._scrivi(ov, d)
 
     @staticmethod
     def _scrivi(ov: dict, d: dict) -> bool:
@@ -152,7 +204,10 @@ class Palco:
         with self._ov_lock:
             ov = self._ov
             if ov is None or not ov["vivo"]:
+                gen = self._gen_ov
                 ov = self._avvia_overlay()
+                if ov is not None:
+                    ov["gen"] = gen
                 self._ov = ov
         if ov is None or not ov["pronto"].wait(attesa):
             return None
@@ -212,10 +267,10 @@ class Palco:
                 ev, d = str(m.get("ev", "")), m.get("dati", {})
                 with self._lock:
                     sc = self._scena
-                if sc is None:
-                    continue
+                if sc is None or sc.get("ov") is not ov:
+                    continue                              # nessuna scena (o di un overlay vecchio)
                 if ev == "chiusa":
-                    ov["pronto"].clear()                  # ricarica la pagina: un attimo e torna pronto
+                    ov["pronto"].clear()                  # la pagina si ripulisce: un attimo e torna pronta
                     sc["esito"] = str((d or {}).get("esito", "chiusa"))[:24]
                     sc["fine"].set()
                 elif TIPO_RE.match(ev) and isinstance(d, dict):
@@ -229,13 +284,15 @@ class Palco:
                 self._ov = None
         with self._lock:
             sc = self._scena
-        if sc is not None and not sc["fine"].is_set():
+        if sc is not None and sc.get("ov") is ov and not sc["fine"].is_set():
             sc["esito"] = "errore"
             sc["fine"].set()
 
     # -- una scena
     def _apri(self, sid: str, tipo: str, dati: dict, client) -> None:
         def chiusa(esito: str) -> None:
+            with self._lock:
+                self._coda.pop(sid, None)
             client.send_scena_ev(sid, "chiusa", {"esito": esito})
 
         if not palco_attivo():
@@ -259,7 +316,7 @@ class Palco:
             if not file_oggetto:
                 self.registro.scrivi("oggetto_mancante", oggetto=oggetto)
                 return chiusa("mancante")
-        sc = {"sid": sid, "client": client, "fine": threading.Event(), "esito": "errore"}
+        sc = {"sid": sid, "client": client, "fine": threading.Event(), "esito": "errore", "ov": None}
         with self._lock:
             if self._scena is not None:
                 sc = None
@@ -275,9 +332,16 @@ class Palco:
                                                             "oggetto": file_oggetto}}):
                 sc["esito"] = "errore"
             else:
+                # da qui i messaggi vanno dritti all'overlay; prima quelli arrivati nel frattempo,
+                # in ordine (chi arriva adesso aspetta il lock e passa dopo)
+                with self._lock:
+                    attesa = self._coda.pop(sid, None)
+                    sc["ov"] = ov
+                    for d in (attesa or {}).get("righe", []):
+                        self._scrivi(ov, d)
                 log.info("scena %s mostrata in %.2f s", sid, time.monotonic() - t0)
                 if not sc["fine"].wait(SCENA_MAX):
-                    self._scrivi(ov, {"chiudi": 1})
+                    self._scrivi(ov, {"chiudi": "scaduta"})
                     sc["fine"].wait(5)
                     sc["esito"] = "scaduta"
         except Exception:  # noqa: BLE001 -- mai far cadere la voce
@@ -285,6 +349,7 @@ class Palco:
         finally:
             with self._lock:
                 self._scena = None
+                self._coda.pop(sid, None)
         self.registro.scrivi("scena_chiusa", scena=tipo, esito=sc["esito"])
         chiusa(sc["esito"])
 
@@ -298,23 +363,36 @@ class _Api:
 
     def __init__(self, conn: socket.socket) -> None:
         self._conn = conn
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()           # il socket
+        self._lock_scena = threading.Lock()     # chiudi() una volta sola anche se chiamata insieme
         self._finestra = None
         self._scena: Optional[dict] = None
+        self._presa = False                     # la pagina ha gia' preso la scena (inizio() l'ha data)
         self._arriva = threading.Event()
         self._finito = threading.Event()        # l'overlay si chiude del tutto
-        self._dopo_chiusa = None                # fn: nascondi + ricarica (dal processo)
+        self._dopo_chiusa = None                # fn: nascondi (dal processo)
+
+    def nuova(self, scena: dict) -> None:
+        """Arriva una scena: la pagina (ferma in inizio()) la prende."""
+        with self._lock_scena:
+            self._presa = False
+            self._scena = scena
+            self._arriva.set()
 
     def inizio(self) -> Optional[dict]:
         """La pagina e' pronta: aspetta la prossima scena (torna None se l'overlay si chiude)."""
         self._scrivi({"pronto": 1})
         while not self._finito.is_set():
-            if self._arriva.wait(0.5):
-                break
-        s = self._scena
-        if s is None:
-            return None
-        return {"sid": s.get("sid"), "tipo": s.get("tipo"), "dati": s.get("dati") or {}}
+            if not self._arriva.wait(0.5):
+                continue
+            with self._lock_scena:
+                s = self._scena
+                if s is None:                   # chiusa prima di prenderla: si aspetta la prossima
+                    self._arriva.clear()
+                    continue
+                self._presa = True
+            return {"sid": s.get("sid"), "tipo": s.get("tipo"), "dati": s.get("dati") or {}}
+        return None
 
     def oggetto(self) -> str:
         """Il modello della scena (JSON in chiaro, solo in memoria), "" se non c'e'."""
@@ -335,14 +413,22 @@ class _Api:
             return False
         return self._scrivi({"ev": ev, "dati": dati if isinstance(dati, dict) else {}})
 
-    def chiudi(self, esito="chiusa") -> None:
-        if self._scena is None:
-            return
-        self._scena = None
-        self._arriva.clear()
+    def chiudi(self, esito="chiusa") -> Optional[str]:
+        """Fine della scena (Esc, la pagina, il server, l'app), una volta sola. Torna il sid se la
+        pagina l'aveva gia' presa (allora va ripulita), altrimenti None."""
+        with self._lock_scena:
+            if self._scena is None:
+                return None
+            sid, presa = str(self._scena.get("sid") or ""), self._presa
+            self._scena = None
+            self._presa = False
+            self._arriva.clear()
         self._scrivi({"ev": "chiusa", "dati": {"esito": str(esito)[:24]}})
+        if not presa:
+            self._scrivi({"pronto": 1})         # la pagina e' ancora li' che aspetta
         if self._dopo_chiusa is not None:
             threading.Thread(target=self._dopo_chiusa, daemon=True).start()
+        return sid if presa else None
 
     def _scrivi(self, d: dict) -> bool:
         try:
@@ -351,6 +437,29 @@ class _Api:
             return True
         except OSError:
             return False
+
+
+def _finestra_mia(titolo: str):
+    """La finestra dell'overlay di QUESTO processo (un overlay vecchio che si sta chiudendo ha
+    lo stesso titolo: FindWindow potrebbe dare la sua)."""
+    from . import cinema as C
+    import ctypes
+    from ctypes import wintypes
+
+    pid, trovata = os.getpid(), []
+    buf = ctypes.create_unicode_buffer(256)
+
+    def cb(hwnd, _l):
+        p = wintypes.DWORD()
+        C._u32.GetWindowThreadProcessId(hwnd, ctypes.byref(p))
+        if p.value == pid and C._u32.GetWindowTextW(hwnd, buf, 256) and buf.value == titolo:
+            trovata.append(hwnd)
+            return False
+        return True
+
+    C._u32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    C._u32.EnumWindows(C._WNDENUMPROC(cb), 0)
+    return trovata[0] if trovata else None
 
 
 def _overlay(porta: int, segreto: str) -> int:
@@ -362,6 +471,7 @@ def _overlay(porta: int, segreto: str) -> int:
     except (AttributeError, OSError):
         pass
 
+    davanti_prima = C._u32.GetForegroundWindow()     # a chi ridare il primo piano se lo rubiamo
     conn = socket.create_connection(("127.0.0.1", porta), timeout=10)
     conn.settimeout(None)
     conn.sendall(_riga({"segreto": segreto}))
@@ -370,23 +480,38 @@ def _overlay(porta: int, segreto: str) -> int:
     import webview
     api = _Api(conn)
     pagina = os.path.join(cartella_pagine(), "index.html")
+    # FUORI SCHERMO: se pywebview la mostra da sola (vedi in cima) non si vede niente
     api._finestra = webview.create_window(TITOLO, pagina, js_api=api, frameless=True, easy_drag=False,
-                                          on_top=True, hidden=True, transparent=True, focus=True)
+                                          on_top=True, hidden=True, transparent=True, focus=True,
+                                          x=FUORI, y=FUORI, width=640, height=480, min_size=(1, 1))
     stato = {"mia": None, "nwn": None, "rett": None, "esclusivo": False}
+    lock_vista = threading.Lock()          # mostra / nascondi non si accavallano
 
-    def nascondi_e_ricarica():
-        try:
-            api._finestra.hide()
-        except Exception:  # noqa: BLE001
-            pass
-        if stato["nwn"]:
-            C.porta_davanti(stato["nwn"])
-        time.sleep(0.2)
-        try:
-            api._finestra.evaluate_js("location.reload()")     # pagina pulita, pronta per la prossima
-        except Exception:  # noqa: BLE001
-            pass
-    api._dopo_chiusa = nascondi_e_ricarica
+    def stile(mia) -> None:
+        """Niente icona nella barra e in Alt+Tab, anche nell'attimo in cui pywebview la mostra."""
+        s = C._u32.GetWindowLongPtrW(mia, C.GWL_EXSTYLE)
+        C._u32.SetWindowLongPtrW(mia, C.GWL_EXSTYLE, (s | C.WS_EX_TOOLWINDOW) & ~C.WS_EX_APPWINDOW)
+
+    def via(mia) -> None:
+        C._u32.SetWindowPos(mia, C.HWND_TOPMOST, FUORI, FUORI, 0, 0,
+                            C.SWP_NOSIZE | C.SWP_NOACTIVATE)
+
+    def nascondi() -> None:
+        """Niente scena: finestra nascosta e fuori schermo, il gioco (o chi c'era) torna davanti."""
+        with lock_vista:
+            if api._scena is not None:
+                return                        # nel frattempo e' arrivata una scena
+            try:
+                api._finestra.hide()
+            except Exception:  # noqa: BLE001
+                pass
+            mia = stato["mia"]
+            if mia:
+                via(mia)
+                if C._u32.GetForegroundWindow() in (mia, None, 0):
+                    # dopo una scena il gioco; al Connetti chi c'era (di solito il Companion)
+                    C.porta_davanti(stato["nwn"] or davanti_prima)
+    api._dopo_chiusa = nascondi
 
     def mostra(scena: dict):
         nwn = C.finestra_nwn()
@@ -394,23 +519,31 @@ def _overlay(porta: int, segreto: str) -> int:
         rett = None if esclusivo else C.area_di_gioco(nwn)
         if esclusivo:
             C._u32.ShowWindow(nwn, C.SW_MINIMIZE)
-        stato.update(nwn=nwn, rett=rett, esclusivo=esclusivo)
-        log.info("scena %s (%s), NWN area=%s esclusivo=%s", scena.get("tipo"), scena.get("sid"), rett, esclusivo)
-        api._scena = scena
-        api._arriva.set()
-        mia = stato["mia"] or C._u32.FindWindowW(None, TITOLO)
-        stato["mia"] = mia
-        api._finestra.show()
-        if mia:
-            if rett is None:        # niente NWN (o schermo intero esclusivo): tutto lo schermo
-                w, h = C._u32.GetSystemMetrics(0), C._u32.GetSystemMetrics(1)
-                C._adatta(mia, (0, 0, w, h))
-            else:
-                C._adatta(mia, rett)
-        C.porta_davanti(mia)
+        # niente NWN (o schermo intero esclusivo): tutto lo schermo
+        pieno = (0, 0, C._u32.GetSystemMetrics(0), C._u32.GetSystemMetrics(1))
+        with lock_vista:
+            stato.update(nwn=nwn, rett=rett, esclusivo=esclusivo)
+            log.info("scena %s (%s), NWN area=%s esclusivo=%s", scena.get("tipo"), scena.get("sid"),
+                     rett, esclusivo)
+            mia = stato["mia"] = stato["mia"] or _finestra_mia(TITOLO)
+            if mia:                           # al suo posto PRIMA di comparire
+                stile(mia)
+                x, y, w, h = rett or pieno
+                C._u32.SetWindowPos(mia, C.HWND_TOPMOST, x, y, w, h, C.SWP_NOACTIVATE)
+            api.nuova(scena)
+            api._finestra.show()
+            if mia:
+                C._adatta(mia, rett or pieno)
+            C.porta_davanti(mia)
 
     def ascolta():
         # dall'app: scene da aprire, messaggi dello script per la pagina, "chiudi", "esci"
+        def fine_pagina(sid: str):
+            try:
+                api._finestra.evaluate_js("window.palcoFine && window.palcoFine(%s)" % json.dumps(sid))
+            except Exception:  # noqa: BLE001
+                pass
+
         try:
             for riga in righe:
                 m = json.loads(riga)
@@ -419,7 +552,10 @@ def _overlay(porta: int, segreto: str) -> int:
                 if isinstance(m.get("apri"), dict):
                     mostra(m["apri"])
                 elif m.get("chiudi"):
-                    api.chiudi("server")
+                    esito = m["chiudi"] if isinstance(m["chiudi"], str) else "server"
+                    sid = api.chiudi(esito)
+                    if sid:
+                        fine_pagina(sid)      # la pagina si ripulisce e torna in attesa
                 elif isinstance(m.get("msg"), dict) and api._scena is not None:
                     api._finestra.evaluate_js("window.palcoRicevi && window.palcoRicevi(%s)" % json.dumps(m["msg"]))
         except (OSError, ValueError):
@@ -431,17 +567,33 @@ def _overlay(porta: int, segreto: str) -> int:
         except Exception:  # noqa: BLE001
             pass
 
+    def caricata():
+        # pywebview l'ha mostrata caricando la pagina: via subito, se non c'e' una scena
+        if api._scena is None:
+            nascondi()
+
+    api._finestra.events.loaded += caricata
+
     def guardiano():
-        for _ in range(50):
-            stato["mia"] = C._u32.FindWindowW(None, TITOLO)
+        for _ in range(200):
+            stato["mia"] = _finestra_mia(TITOLO)
             if stato["mia"]:
+                stile(stato["mia"])
                 break
             time.sleep(0.05)
         threading.Thread(target=ascolta, daemon=True).start()
         while not api._finito.wait(0.5):
-            # resta incollata al gioco mentre c'e' una scena
-            if api._scena is not None and stato["mia"] and stato["rett"] and not stato["esclusivo"]:
-                C._incolla(stato["mia"], C.area_di_gioco(stato["nwn"]) or stato["rett"])
+            mia = stato["mia"]
+            if not mia:
+                continue
+            if api._scena is None:
+                # rete di sicurezza: comparsa da sola (navigazione, Windows)? si rinasconde
+                if C._u32.IsWindowVisible(mia):
+                    log.info("overlay visibile senza scena: nascosto")
+                    nascondi()
+            elif stato["rett"] and not stato["esclusivo"]:
+                # resta incollata al gioco mentre c'e' una scena
+                C._incolla(mia, C.area_di_gioco(stato["nwn"]) or stato["rett"])
 
     webview.start(guardiano, private_mode=True, http_server=True)
     api._finito.set()

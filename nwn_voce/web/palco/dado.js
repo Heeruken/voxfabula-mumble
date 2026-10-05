@@ -15,12 +15,21 @@ const DURATA = 1500;        // ms del rotolare
 const POSA = 1700;          // ms in cui il risultato resta in mezzo allo schermo
 
 let coda = Promise.resolve();
+let epoca = 0;              // ferma() la cambia: i dadi della scena finita si fermano
 
 // m = {chi, abilita, d20, mod, tot, cd, ok, seme}. Torna quando il dado e' sparito.
 // dove() = {x, y} in pixel (accanto a un pallino) o null = in mezzo; chiesto quando tocca a lui.
 export function tira(el, m, dove = null) {
-  coda = coda.then(() => rotola(el, m, dove ? dove() : null));
+  const mia = epoca;           // di quale scena e' il tiro (deciso adesso, non quando tocca a lui)
+  coda = coda.then(() => (mia === epoca ? rotola(el, m, dove ? dove() : null, mia) : null));
   return coda;
+}
+
+// Fine della scena: via i dadi in corso e in coda (chi li aspettava viene liberato).
+export function ferma(el) {
+  epoca++;
+  coda = Promise.resolve();
+  if (el) { el.hidden = true; el.innerHTML = ''; }
 }
 
 // Quando i dadi in corso (e in coda) hanno finito: quello che lo script manda DOPO un tiro
@@ -29,8 +38,9 @@ export function dopoDadi() {
   return coda;
 }
 
-function rotola(el, m, pos) {
+function rotola(el, m, pos, mia) {
   return new Promise(fine => {
+    if (mia !== epoca) return fine();
     const caso = mulberry32(Number(m.seme) || 1);
     el.innerHTML = '';
     el.classList.toggle('vicino', !!pos);
@@ -62,6 +72,7 @@ function rotola(el, m, pos) {
       const ultimo = i === PASSI - 1;
       const n = ultimo ? m.d20 : 1 + Math.floor(caso() * 20);
       setTimeout(() => {
+        if (mia !== epoca) return fine();      // scena finita: niente dado sulla prossima
         faccia.textContent = n;
         faccia.classList.toggle('gira', !ultimo && i % 2 === 0);
         if (ultimo) {
@@ -70,7 +81,7 @@ function rotola(el, m, pos) {
           conto.textContent = `${m.d20} ${segno} ${Math.abs(m.mod)} = ${m.tot}` +
             (m.cd ? `  (CD ${m.cd}) ${m.ok ? 'riuscito' : 'fallito'}` : '');
           conto.classList.add('su');
-          setTimeout(() => { el.hidden = true; fine(); }, POSA);
+          setTimeout(() => { if (mia === epoca) el.hidden = true; fine(); }, POSA);
         }
       }, t);
     });
