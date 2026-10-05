@@ -32,6 +32,9 @@ body.in-scena #velo { opacity: 1; }
 body.oscura #velo { background: radial-gradient(ellipse 70% 80% at 40% 52%, rgba(22, 16, 48, .9), rgba(2, 2, 6, .99) 100%); }
 #testa, #lato, #scena { opacity: 0; transition: opacity .5s ease .1s; }
 body.in-scena #testa, body.in-scena #lato, body.in-scena #scena { opacity: 1; }
+/* fine della scena: sfuma tutto insieme e in fretta (0.35 s, come USCITA in palco.py) */
+body:not(.in-scena) #velo, body:not(.in-scena) #testa, body:not(.in-scena) #lato,
+body:not(.in-scena) #scena { transition: opacity .3s ease; }
 
 #carica {
   position: fixed; left: calc((100% - 340px) / 2); top: 50%; transform: translate(-50%, -50%);
