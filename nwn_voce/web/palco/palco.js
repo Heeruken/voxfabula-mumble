@@ -141,8 +141,11 @@ async function tiro(m) {
 }
 
 async function avvia() {
-  const ini = await api().inizio();
+  const ini = await api().inizio();          // nell'overlay aspetta (nascosto) che arrivi una scena
+  if (!ini) return;                          // l'overlay si sta chiudendo
   const dati = ini.dati || {};
+  document.body.classList.toggle('oscura', !!dati.oscura);
+  document.body.classList.add('in-scena');
   $('titolo').textContent = dati.titolo || '';
   if (dati.testo) diario(dati.testo);
   azioni(dati.azioni);
@@ -166,16 +169,28 @@ async function avvia() {
     else if (m.tipo === 'azioni') azioni(m.azioni);
     else if (m.tipo === 'titolo') $('titolo').textContent = m.titolo || '';
   });
+  const carica = $('carica');
+  const tCarica = setTimeout(() => { carica.hidden = false; }, 250);   // solo se ci mette un po'
   try {
     const mod = await import('./scene/' + ini.tipo + '.js');
     await mod.default(palco);
+    clearTimeout(tCarica);
+    carica.hidden = true;
   } catch (e) {
+    clearTimeout(tCarica);
+    carica.hidden = true;
     console.error(e);
     diario('Questa scena non si apre: ' + e.message, 'ko');
   }
 }
 
+// la scena piu' usata si carica SUBITO (three.js compreso), mentre l'overlay aspetta nascosto:
+// quando arriva la scena e' gia' tutto in memoria
+import('./scene/esamina.js').catch(() => {});
+
 // PROVA solo se chiesta nell'indirizzo (index.html?prova&oggetto=...): mai per sbaglio nel Companion
-if (new URLSearchParams(location.search).has('prova')) avvia();
-else if (window.pywebview && window.pywebview.api && window.pywebview.api.inizio) avvia();
-else window.addEventListener('pywebviewready', avvia, { once: true });
+let avviato = false;
+function parti() { if (!avviato) { avviato = true; avvia(); } }
+if (new URLSearchParams(location.search).has('prova')) parti();
+else if (window.pywebview && window.pywebview.api && window.pywebview.api.inizio) parti();
+else window.addEventListener('pywebviewready', parti, { once: true });

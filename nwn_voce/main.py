@@ -244,6 +244,8 @@ def main() -> None:
     webview.start()
     # finestra chiusa: fermiamo ponte e Mumble prima di uscire
     api._engine.stop(quiet=True)
+    if api._engine.palco is not None:
+        api._engine.palco.chiudi_tutto()
     if api._pending_installer:
         updater.launch_installer(api._pending_installer)
     log.info("chiuso")

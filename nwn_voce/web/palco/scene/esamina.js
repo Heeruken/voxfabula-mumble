@@ -40,11 +40,80 @@ async function costruisci(d) {
     geo.setAttribute('uv', new THREE.BufferAttribute(b64f32(m.uv), 2));
     geo.computeVertexNormals();
     const map = mappe[i];
-    g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-      map, color: map ? 0xffffff : 0x8a8f99, roughness: .62, metalness: .15,
-      side: THREE.DoubleSide, alphaTest: .35 })));
+    const mat = new THREE.MeshStandardMaterial({
+      map, color: map ? 0xffffff : 0x8a8f99, roughness: .58, metalness: .12, envMapIntensity: .9,
+      side: THREE.DoubleSide, alphaTest: .35, transparent: true, opacity: 0 });   // entra in dissolvenza
+    g.add(new THREE.Mesh(geo, mat));
   });
   return g;
+}
+
+// Luce d'ambiente per i materiali: una stanza scura con una finestra calda e una fredda, filtrata
+// (PMREM) in una mappa di riflessi. Da' volume a metalli, pietra e legno senza file in piu'.
+function ambiente(renderer) {
+  const stanza = new THREE.Scene();
+  stanza.background = new THREE.Color(0x0d0a1c);
+  const pannello = (colore, forza, pos, scala) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(colore).multiplyScalar(forza), side: THREE.DoubleSide }));
+    m.position.set(...pos); m.scale.set(...scala); m.lookAt(0, 0, 0);
+    stanza.add(m);
+  };
+  pannello(0xffe2b0, 6, [4, 5, 4], [5, 3, 1]);      // luce calda, in alto davanti
+  pannello(0x8a7cff, 3, [-6, 1, -3], [4, 6, 1]);    // contorno freddo, dietro
+  pannello(0xfff6e8, 1.2, [0, -6, 0], [8, 8, 1]);   // un po' di luce da sotto
+  const pm = new THREE.PMREMGenerator(renderer);
+  const env = pm.fromScene(stanza, 0.04).texture;
+  pm.dispose();
+  return env;
+}
+
+// alone dietro l'oggetto: un disco di luce morbida, sempre di fronte alla camera
+function alone(raggio) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0, 'rgba(160,130,255,0.55)');
+  g.addColorStop(0.35, 'rgba(110,80,200,0.22)');
+  g.addColorStop(1, 'rgba(60,40,120,0)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthWrite: false, transparent: true }));
+  s.scale.setScalar(raggio * 4.2);
+  s.position.set(0, 0, -raggio * 1.2);
+  s.renderOrder = -1;
+  return s;
+}
+
+// pulviscolo dorato che fluttua piano attorno all'oggetto
+function pulviscolo(raggio, n = 140) {
+  const pos = new Float32Array(n * 3), fase = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = (Math.random() - .5) * raggio * 6;
+    pos[i * 3 + 1] = (Math.random() - .5) * raggio * 4;
+    pos[i * 3 + 2] = (Math.random() - .5) * raggio * 4;
+    fase[i] = Math.random() * Math.PI * 2;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xf2d98a, size: raggio * .018,
+    transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending }));
+  p.userData = { fase, base: pos.slice(), raggio };
+  return p;
+}
+
+function muoviPulviscolo(p, t) {
+  const { fase, base, raggio } = p.userData;
+  const a = p.geometry.attributes.position.array;
+  for (let i = 0; i < fase.length; i++) {
+    a[i * 3] = base[i * 3] + Math.sin(t * .23 + fase[i]) * raggio * .08;
+    a[i * 3 + 1] = base[i * 3 + 1] + ((t * raggio * .03 + fase[i]) % (raggio * 4)) - raggio * 2;
+    a[i * 3 + 2] = base[i * 3 + 2] + Math.cos(t * .19 + fase[i]) * raggio * .08;
+  }
+  p.geometry.attributes.position.needsUpdate = true;
 }
 
 function segnaposto() {
@@ -65,14 +134,17 @@ export default async function (palco) {
   const renderer = new THREE.WebGLRenderer({ canvas: tela, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
   renderer.setClearColor(0x000000, 0);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
   const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xfff4e0, 0x241c48, 1.4));
-  const sole = new THREE.DirectionalLight(0xfff1dc, 2.2);
+  scene.environment = ambiente(renderer);
+  scene.add(new THREE.HemisphereLight(0xfff4e0, 0x1c1638, .55));
+  const sole = new THREE.DirectionalLight(0xffe9c8, 2.4);      // luce principale, calda
   sole.position.set(3, 5, 4);
   scene.add(sole);
-  const contro = new THREE.DirectionalLight(0x9fb7ff, .8);
-  contro.position.set(-4, 1, -3);
-  scene.add(contro);
+  const contorno = new THREE.DirectionalLight(0x9d8cff, 1.3);  // luce di contorno, dietro: stacca la sagoma
+  contorno.position.set(-3, 2, -5);
+  scene.add(contorno);
   const camera = new THREE.PerspectiveCamera(35, 1, .01, 100);
 
   // perno (la rotazione condivisa) -> modello (NWN ha z in alto: ruotato per three.js, centrato)
@@ -96,6 +168,15 @@ export default async function (palco) {
   dentro.add(modello);
   perno.add(dentro);
   perno.quaternion.setFromEuler(new THREE.Euler(.35, -.6, 0));    // di tre quarti
+  scene.add(alone(raggio));
+  const polvere = pulviscolo(raggio);
+  scene.add(polvere);
+  // entrata: l'oggetto arriva in dissolvenza, un po' piu' piccolo e girato, e si posa
+  const materiali = [];
+  modello.traverse(o => { if (o.material) materiali.push(o.material); });
+  const entra = { t0: performance.now(), dur: 900, giro: .55 };
+  const finale = perno.quaternion.clone();
+  perno.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -entra.giro));
 
   let dist = raggio * 3.2;
   const distMin = raggio * 1.2, distMax = raggio * 7;
@@ -103,7 +184,7 @@ export default async function (palco) {
 
   // ---- girare e avvicinare (un clic senza trascinare non gira: puo' essere su un pallino)
   let presa = null, mosso = 0, ultimoTocco = -1e9, ultimaVista = 0;
-  const bersaglio = new THREE.Quaternion().copy(perno.quaternion);
+  const bersaglio = new THREE.Quaternion().copy(finale);      // l'entrata gira verso la posa giusta
   let distBersaglio = dist;
 
   function mandaVista(subito = false) {
@@ -269,6 +350,13 @@ export default async function (palco) {
       dist += (distBersaglio - dist) * .18;
     }
     const t = performance.now() / 1000;
+    const k = Math.min(1, (performance.now() - entra.t0) / entra.dur), e = 1 - Math.pow(1 - k, 3);
+    if (k < 1 || materiali[0] && materiali[0].opacity < 1) {
+      for (const m of materiali) { m.opacity = e; m.transparent = e < 1; }
+      perno.scale.setScalar(.86 + .14 * e);
+    }
+    dentro.position.y = Math.sin(t * .9) * raggio * .015;          // galleggia appena
+    muoviPulviscolo(polvere, t);
     for (const s of segni.values()) s.scale.setScalar(1 + .25 * Math.sin(t * 4));
     camera.position.set(0, 0, dist);
     camera.near = raggio / 50;

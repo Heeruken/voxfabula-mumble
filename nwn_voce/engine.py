@@ -105,6 +105,8 @@ class Engine:
                 palco = self.palco
                 client.on_scena = lambda tm, sid, tipo, dati: palco.evento(tm, sid, tipo, dati, client)
             client.open()
+            if self.palco is not None:
+                self.palco.prepara()          # overlay pronto e nascosto: la prima scena compare subito
             stop = threading.Event()
             self._client, self._stop_evt = client, stop
             self._bridge_thread = threading.Thread(

@@ -22,16 +22,39 @@ html, body {
   user-select: none;
 }
 
-/* il gioco resta visibile sotto, scurito */
-#velo { position: fixed; inset: 0; background: rgba(7, 5, 19, .62); }
+/* il gioco resta visibile sotto, scurito; ai bordi piu' scuro (vignettatura). "oscura" = oggetto
+   speciale: il server ha gia' portato il gioco a nero, qui solo la profondita' */
+#velo {
+  position: fixed; inset: 0; opacity: 0; transition: opacity .45s ease;
+  background: radial-gradient(ellipse 75% 85% at 40% 52%, rgba(12, 9, 30, .42), rgba(5, 4, 14, .9) 100%);
+}
+body.in-scena #velo { opacity: 1; }
+body.oscura #velo { background: radial-gradient(ellipse 70% 80% at 40% 52%, rgba(22, 16, 48, .9), rgba(2, 2, 6, .99) 100%); }
+#testa, #lato, #scena { opacity: 0; transition: opacity .5s ease .1s; }
+body.in-scena #testa, body.in-scena #lato, body.in-scena #scena { opacity: 1; }
+
+#carica {
+  position: fixed; left: calc((100% - 340px) / 2); top: 50%; transform: translate(-50%, -50%);
+  font: 500 16px 'Alegreya SC', serif; letter-spacing: .12em; color: var(--gold);
+  opacity: .8; animation: respira 1.6s ease-in-out infinite; pointer-events: none;
+}
+#carica[hidden] { display: none; }
 
 #testa {
   position: fixed; left: 0; right: 0; top: 0; height: 56px;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 28px;
-  background: linear-gradient(rgba(14, 11, 34, .92), rgba(14, 11, 34, 0));
+  background: linear-gradient(rgba(10, 8, 26, .95), rgba(10, 8, 26, 0));
 }
-#titolo { margin: 0; font: 600 22px 'Cinzel', serif; letter-spacing: .06em; color: var(--gold); }
+#titolo {
+  margin: 0; font: 600 23px 'Cinzel', serif; letter-spacing: .08em; color: var(--gold);
+  text-shadow: 0 0 18px rgba(242, 207, 91, .25);
+  padding-bottom: 6px; position: relative;
+}
+#titolo::after {           /* filo dorato sotto il titolo */
+  content: ''; position: absolute; left: 0; bottom: 0; width: 100%; height: 1px;
+  background: linear-gradient(90deg, rgba(216, 207, 168, .9), rgba(216, 207, 168, 0));
+}
 #aiuto { font: 500 14px 'Alegreya SC', serif; letter-spacing: .05em; opacity: .75; }
 
 #scena { position: fixed; inset: 56px 340px 0 0; }
@@ -45,12 +68,18 @@ html, body {
 }
 #azioni { display: flex; flex-direction: column; gap: 8px; }
 #azioni button {
-  font: 500 16px 'Alegreya SC', serif; letter-spacing: .04em;
-  color: var(--parchment); background: rgba(74, 65, 152, .55);
-  border: 1px solid rgba(216, 207, 168, .45); border-radius: 4px;
-  padding: 9px 12px; cursor: pointer; text-align: left;
+  font: 500 16px 'Alegreya SC', serif; letter-spacing: .05em;
+  color: var(--parchment);
+  background: linear-gradient(180deg, rgba(74, 65, 152, .62), rgba(40, 33, 92, .72));
+  border: 1px solid rgba(216, 207, 168, .5); border-radius: 3px;
+  padding: 10px 14px; cursor: pointer; text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+  transition: background .2s, box-shadow .2s, border-color .2s;
 }
-#azioni button:hover:not(:disabled) { background: rgba(109, 79, 196, .75); }
+#azioni button:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(109, 79, 196, .8), rgba(64, 48, 140, .85));
+  border-color: var(--gold); box-shadow: 0 0 14px rgba(242, 207, 91, .25), inset 0 1px 0 rgba(255, 255, 255, .12);
+}
 #azioni button:disabled { opacity: .45; cursor: default; }
 
 #diario {
@@ -58,9 +87,12 @@ html, body {
   padding-right: 4px;
 }
 .voce {
-  background: rgba(14, 11, 34, .78); border-left: 3px solid var(--frame);
-  padding: 8px 10px; border-radius: 0 4px 4px 0;
+  background: linear-gradient(90deg, rgba(20, 16, 44, .9), rgba(14, 11, 34, .7));
+  border-left: 3px solid var(--frame); border-top: 1px solid rgba(216, 207, 168, .12);
+  padding: 9px 12px; border-radius: 0 4px 4px 0;
+  animation: entra .45s ease both;
 }
+@keyframes entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .voce.ok { border-left-color: var(--ok); }
 .voce.ko { border-left-color: var(--ko); }
 .voce.segreto { border-left-color: var(--gold); font-style: italic; }
@@ -129,15 +161,25 @@ html, body {
 #dado[hidden] { display: none; }
 #dado.vicino .faccia { width: 84px; height: 84px; font-size: 32px; }
 #dado.vicino .conto { font-size: 17px; }
+#dado { perspective: 600px; }
 #dado .faccia {
   width: 120px; height: 120px;
   display: grid; place-items: center;
   font: 600 46px 'Cinzel', serif; color: var(--sky);
-  background: radial-gradient(circle at 35% 30%, #f3eedb, var(--gold) 60%, #9d916a);
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, .45), rgba(255, 255, 255, 0) 45%),
+    radial-gradient(circle at 35% 30%, #f3eedb, var(--gold) 60%, #9d916a);
   clip-path: polygon(50% 0, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
-  transition: transform .12s;
+  transition: transform .13s ease-out, filter .3s;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .55));
 }
-#dado .faccia.gira { transform: rotate(18deg) scale(.94); }
+#dado .faccia.gira { transform: rotateX(28deg) rotateY(-32deg) rotate(18deg) scale(.92); }
+#dado .faccia:not(.gira) { transform: rotateX(-14deg) rotateY(16deg) rotate(-6deg); }
+#dado .faccia.fermo, #dado .faccia.venti, #dado .faccia.uno {
+  transform: none; animation: posa .5s ease-out;
+  filter: drop-shadow(0 0 18px rgba(242, 207, 91, .6)) drop-shadow(0 6px 14px rgba(0, 0, 0, .55));
+}
+@keyframes posa { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
 #dado .faccia.venti { background: radial-gradient(circle at 35% 30%, #fff6c9, #f2cf5b 60%, #a4801e); }
 #dado .faccia.uno { background: radial-gradient(circle at 35% 30%, #f1c6bd, #c9604f 60%, #7a2d22); }
 #dado .conto {
