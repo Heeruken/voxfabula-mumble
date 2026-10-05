@@ -161,7 +161,7 @@ Senza certificato l'avviso "editore sconosciuto" resta. Le cose gratuite che lo 
 3. **Cambia versione il meno possibile**: SmartScreen costruisce la reputazione **per singolo file**. Ogni nuova build riparte da zero, quindi meglio poche versioni scaricate da tanti che tante versioni scaricate da pochi.
 4. **Distribuisci sempre dallo stesso posto**, per esempio le Release di GitHub, e con le impronte SHA-256 in vista.
 
-## Novità della 1.3.2
+## Novità della 1.3.1.1
 
 - **Scene**: niente più riquadro grigio sopra il gioco al Connetti e dopo ogni scena, e il gioco non perde più il primo piano. Le scene si aprono più in fretta dalla seconda volta (cache), si chiudono da sole se cade la connessione, e chi guarda insieme vede l'oggetto fermarsi esattamente dove l'ha lasciato chi lo girava.
 - La finestra delle scene resta pronta solo mentre sei collegato e con le scene accese.
