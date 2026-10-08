@@ -138,7 +138,7 @@ La build si fa dalla radice, ma il `.dockerignore` lascia passare solo `relay/` 
 
 ## Aggiornamento automatico
 
-All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-mumble`. Se è più nuova, mostra un riquadro con le note della versione e i pulsanti **Aggiorna / Più tardi**. Se l'utente accetta, l'app scarica `VoxFabula-Companion-Setup-<ver>.exe` (le 1.2.x cercano `VoxFabula-Voice-Setup-<ver>.exe`), ne verifica l'impronta SHA-256 (quella che GitHub calcola da solo per ogni file), si chiude e lancia l'installer in modalità silenziosa. L'installer sostituisce i file e la riapre.
+All'avvio l'app chiede a GitHub l'ultima **Release** di `Heeruken/voxfabula-companion`. Se è più nuova, mostra un riquadro con le note della versione e i pulsanti **Aggiorna / Più tardi**. Se l'utente accetta, l'app scarica `VoxFabula-Companion-Setup-<ver>.exe` (le 1.2.x cercano `VoxFabula-Voice-Setup-<ver>.exe`), ne verifica l'impronta SHA-256 (quella che GitHub calcola da solo per ogni file), si chiude e lancia l'installer in modalità silenziosa. L'installer sostituisce i file e la riapre.
 
 - Si scarica solo via HTTPS e solo da domini GitHub, controllati anche dopo i redirect. Una Release senza impronta viene ignorata; un file che non corrisponde viene buttato.
 - Chi usa lo **zip portatile** non si aggiorna da solo: il pulsante apre la pagina della versione nel browser.
