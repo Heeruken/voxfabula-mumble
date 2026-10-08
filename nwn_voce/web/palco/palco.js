@@ -129,7 +129,7 @@ function ripulisci() {
   scenaPronta = false;
   filo = Promise.resolve();
   ferma($('dado'));
-  document.body.classList.remove('in-scena', 'oscura');
+  document.body.classList.remove('in-scena', 'oscura', 'esclusivo');
   $('titolo').textContent = '';
   $('scena').innerHTML = '';
   $('azioni').innerHTML = '';
@@ -219,6 +219,8 @@ async function avvia() {
   chiusa = false;
   const dati = ini.dati || {};
   document.body.classList.toggle('oscura', !!dati.oscura);
+  // NWN in schermo intero esclusivo e' ridotto a icona: dietro ci sarebbe il desktop, il velo copre tutto
+  document.body.classList.toggle('esclusivo', !!ini.esclusivo);
   document.body.classList.add('in-scena');
   $('titolo').textContent = dati.titolo || '';
   if (dati.testo) diario(dati.testo);

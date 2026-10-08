@@ -30,6 +30,8 @@ html, body {
 }
 body.in-scena #velo { opacity: 1; }
 body.oscura #velo { background: radial-gradient(ellipse 70% 80% at 40% 52%, rgba(22, 16, 48, .9), rgba(2, 2, 6, .99) 100%); }
+/* NWN in schermo intero esclusivo e' ridotto a icona: niente desktop dietro, velo pieno */
+body.esclusivo #velo { background: radial-gradient(ellipse 70% 80% at 40% 52%, #16102e, #020206 100%); }
 #testa, #lato, #scena { opacity: 0; transition: opacity .5s ease .1s; }
 body.in-scena #testa, body.in-scena #lato, body.in-scena #scena { opacity: 1; }
 /* fine della scena: sfuma tutto insieme e in fretta (0.35 s, come USCITA in palco.py) */

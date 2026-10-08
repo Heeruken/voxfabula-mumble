@@ -1,0 +1,198 @@
+/* Scena "libro" (scene/libro.js): il gioco si intravede dietro, velato a tema; niente cutscene. */
+@font-face { font-family: 'Unifraktur'; src: url('fonts/unifrakturmaguntia-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Fell'; src: url('fonts/im-fell-english-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Fell'; font-style: italic; src: url('fonts/im-fell-english-latin-400-italic.woff2') format('woff2'); }
+@font-face { font-family: 'Fell SC'; src: url('fonts/im-fell-english-sc-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Pinyon'; src: url('fonts/pinyon-script-latin-400-normal.woff2') format('woff2'); }
+
+/* grana: carta, cuoio, tela (rumore SVG, niente immagini da scaricare) */
+:root {
+  --grana: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .25  0 0 0 0 .18  0 0 0 0 .1  0 0 0 .55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  --chiazze: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='4' seed='7'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .22  0 0 0 0 .08  0 0 0 1.4 -.55'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  --cuoio: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='turbulence' baseFrequency='.045' numOctaves='5' seed='3'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .9 -.2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  --tela: repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(0,0,0,.08) 0 1px, transparent 1px 3px);
+}
+
+/* ---- in modalita' libro: niente testata ne' diario a lato, la scena prende tutto */
+body.libro #testa, body.libro #lato { display: none; }
+body.libro #scena { inset: 0; }
+
+/* il velo a tema: semitrasparente, il gioco resta visibile dietro */
+body.libro #velo { transition: opacity .6s ease; }
+body.libro-grimorio #velo { background: radial-gradient(ellipse 60% 70% at 50% 55%, rgba(40, 6, 8, .38), rgba(8, 2, 3, .86) 100%); animation: lb-candela 5s ease-in-out infinite; }
+body.libro-trattato #velo { background: radial-gradient(ellipse 65% 75% at 50% 52%, rgba(48, 32, 12, .32), rgba(14, 9, 4, .82) 100%); }
+body.libro-diario #velo { background: radial-gradient(ellipse 65% 75% at 50% 52%, rgba(18, 24, 30, .36), rgba(5, 7, 10, .84) 100%); }
+body.libro-lettera #velo { background: radial-gradient(ellipse 50% 60% at 50% 50%, rgba(60, 36, 10, .3), rgba(10, 6, 2, .84) 100%); animation: lb-candela 4s ease-in-out infinite; }
+@keyframes lb-candela { 0%, 100% { filter: brightness(1); } 40% { filter: brightness(1.07); } 55% { filter: brightness(.95); } 70% { filter: brightness(1.04); } }
+
+.lb-tavolo {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  opacity: 0; transform: translateY(40px) scale(.97); transition: opacity .6s ease, transform .7s cubic-bezier(.2, .8, .2, 1);
+}
+.lb-tavolo.dentro { opacity: 1; transform: none; }
+
+.lb-libro {
+  --W: 520px; --H: 760px; --fs: 18px; --cop: #4d2f1a; --sposta: 0;
+  position: relative; width: calc(var(--W) * 2); height: var(--H);
+  perspective: calc(var(--W) * 5);
+  transform: translateX(calc(var(--W) * var(--sposta)));
+  transition: transform .9s cubic-bezier(.45, .05, .25, 1);
+  cursor: pointer;
+  filter: drop-shadow(0 30px 40px rgba(0, 0, 0, .55));
+}
+
+/* ---- fogli: girano attorno al dorso (centro del libro) */
+.lb-foglio {
+  position: absolute; left: var(--W); top: 0; width: var(--W); height: var(--H);
+  transform-origin: left center; transform-style: preserve-3d;
+  transition: transform .9s cubic-bezier(.45, .05, .25, 1);
+}
+.lb-foglio.girato { transform: rotateY(-180deg); }
+.lb-faccia { position: absolute; inset: 0; backface-visibility: hidden; overflow: hidden; }
+.lb-faccia.retro { transform: rotateY(180deg); }
+/* l'ombra che passa sul foglio mentre gira */
+.lb-ombra { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: linear-gradient(90deg, rgba(0,0,0,.35), transparent 60%); }
+.lb-foglio.vola .lb-ombra { animation: lb-ombra .9s ease; }
+@keyframes lb-ombra { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+
+/* carta: piu' piccola della copertina (si vede il bordo della rilegatura), dorso senza margine */
+.lb-faccia.carta { top: 1.2%; bottom: 1.2%; }
+.lb-faccia.fronte.carta { left: 0; right: 1.6%; border-radius: 0 3px 3px 0; }
+.lb-faccia.retro.carta { left: 1.6%; right: 0; border-radius: 3px 0 0 3px; }
+.lb-faccia.carta {
+  background-color: #e8dcc0;
+  background-image: var(--grana), linear-gradient(90deg, rgba(90, 60, 20, .22), transparent 9%, transparent 92%, rgba(90, 60, 20, .12));
+  color: #2b2118;
+  box-shadow: inset 0 0 calc(var(--W) * .08) rgba(120, 80, 30, .35);
+}
+.lb-faccia.retro.carta { background-image: var(--grana), linear-gradient(270deg, rgba(90, 60, 20, .22), transparent 9%, transparent 92%, rgba(90, 60, 20, .12)); }
+
+.lb-testo {
+  position: absolute; inset: 9% 11% 10% 11%; overflow: hidden;
+  font: var(--fs)/1.5 'Fell', 'Alegreya', Georgia, serif; text-align: justify; hyphens: auto;
+}
+.lb-faccia.fronte .lb-testo { left: 9%; right: 13%; }
+.lb-faccia.retro .lb-testo { left: 13%; right: 9%; }
+.lb-testo p { margin: 0 0 .55em; text-indent: 1.2em; }
+.lb-testo p.capo, .lb-testo p.segue { text-indent: 0; }
+.lb-testo .lb-cap { font: 1.7em/1.15 'Fell SC', 'Cinzel', serif; text-align: center; margin: .2em 0 .7em; font-weight: normal; }
+.lb-testo .lb-tit { font: italic 1.15em/1.2 'Fell', serif; margin: .6em 0 .35em; font-weight: normal; }
+.lb-testo .lb-cit { margin: .5em 1.2em .7em; font-style: italic; opacity: .85; border-left: 2px solid rgba(90, 60, 30, .35); padding-left: .8em; text-align: left; }
+.lb-testo b { font-weight: normal; letter-spacing: .03em; text-shadow: 0 0 .5px currentColor, 0 0 .5px currentColor; }
+.lb-simb { height: 1.15em; vertical-align: -.22em; mix-blend-mode: multiply; }
+.lb-fregio { text-align: center; margin: .5em 0; font: 1.4em/1 'Segoe UI Symbol', serif; opacity: .6; }
+.lb-fregio span::before, .lb-fregio span::after { content: ''; display: inline-block; width: 3em; height: 1px; background: currentColor; vertical-align: middle; margin: 0 .6em; opacity: .6; }
+.lb-ill { margin: .6em 0; text-align: center; }
+.lb-ill img { max-width: 100%; max-height: calc(var(--H) * .5); mix-blend-mode: multiply; filter: sepia(.35) contrast(1.05); }
+.lb-ill figcaption { font: italic .8em/1.3 'Fell', serif; opacity: .75; margin-top: .3em; }
+.lb-num { position: absolute; bottom: 4.5%; left: 0; right: 0; text-align: center; font: .8em 'Fell', serif; font-size: calc(var(--fs) * .8); opacity: .6; }
+
+/* frontespizio */
+.lb-front { position: absolute; inset: 14% 12%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: .6em; font-size: var(--fs); }
+.lb-front-titolo { font: 2.1em/1.15 'Fell SC', 'Cinzel', serif; }
+.lb-front-sotto { font: italic 1.05em/1.3 'Fell', serif; opacity: .8; }
+.lb-front-autore { font: 1em 'Fell SC', serif; letter-spacing: .1em; opacity: .8; }
+.lb-stemma.front { width: 22%; fill: #3a2a1a; opacity: .75; mix-blend-mode: multiply; }
+
+/* ---- copertine */
+.lb-faccia.copertina { border-radius: 2px 6px 6px 2px; }
+.lb-faccia.retro.copertina { border-radius: 6px 2px 2px 6px; }
+.lb-cop {
+  position: absolute; inset: 0; background-color: var(--cop);
+  background-image: var(--cuoio), radial-gradient(ellipse at 40% 35%, rgba(255,255,255,.12), transparent 60%), linear-gradient(90deg, rgba(0,0,0,.45), transparent 7%, transparent 93%, rgba(0,0,0,.35));
+  background-blend-mode: soft-light, normal, normal;
+  box-shadow: inset 0 0 calc(var(--W) * .06) rgba(0,0,0,.7);
+  color: #d8c48f;
+}
+.lb-cop-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lb-cop-dentro { position: absolute; inset: 12% 12%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2em; text-align: center; font-size: var(--fs); }
+.lb-cop-titolo { font: 2.2em/1.15 'Fell SC', serif; text-shadow: 0 1px 0 rgba(0,0,0,.8), 0 -1px 0 rgba(255,230,160,.15); }
+.lb-cop-autore { font: 1em 'Fell SC', serif; letter-spacing: .15em; opacity: .8; }
+.lb-cop .lb-stemma { width: 42%; fill: currentColor; filter: drop-shadow(0 2px 0 rgba(0,0,0,.7)) drop-shadow(0 -1px 0 rgba(255,230,160,.2)); }
+.lb-quarta { display: flex; align-items: center; justify-content: center; }
+.lb-quarta .lb-stemma.piccolo { width: 18%; opacity: .55; }
+.lb-faccia.risguardo { background: #3b1414; background-image: var(--chiazze), var(--grana); box-shadow: inset 0 0 calc(var(--W) * .1) rgba(0,0,0,.6); }
+
+/* grimorio: cuoio nero, angoli di ferro con borchie, gotico; carta macchiata e bruciata ai bordi */
+.libro-grimorio .lb-cop { color: #b9a57a; }
+.libro-grimorio .lb-cop-titolo { font-family: 'Unifraktur', serif; font-size: 2.6em; }
+.lb-angolo { position: absolute; width: 16%; aspect-ratio: 1; background: linear-gradient(135deg, #8a8478, #3c3832 60%, #1c1a17); clip-path: polygon(0 0, 100% 0, 0 100%); box-shadow: inset 0 0 6px #000; }
+.lb-angolo::after { content: ''; position: absolute; left: 22%; top: 22%; width: 18%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #d8d2c4, #5a554c 60%, #222); }
+.lb-angolo.a1 { left: 0; top: 0; }
+.lb-angolo.a2 { right: 0; top: 0; transform: scaleX(-1); }
+.lb-angolo.a3 { left: 0; bottom: 0; transform: scaleY(-1); }
+.lb-angolo.a4 { right: 0; bottom: 0; transform: scale(-1); }
+.libro-grimorio .lb-faccia.carta {
+  background-color: #dccaa2;
+  background-image: var(--chiazze), var(--grana), radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(70, 35, 8, .45) 100%);
+  box-shadow: inset 0 0 calc(var(--W) * .05) rgba(60, 25, 5, .7), inset 0 0 2px #3a1a05;
+  color: #1f1510;
+}
+.libro-grimorio .lb-testo .lb-cap { font-family: 'Unifraktur', serif; font-size: 1.9em; color: #5a0d0d; }
+.libro-grimorio .lb-testo p.capo::first-letter { font: 3.3em/.8 'Unifraktur', serif; float: left; color: #7a1010; margin: .08em .1em 0 0; }
+.libro-grimorio .lb-front-titolo { font-family: 'Unifraktur', serif; color: #4a0b0b; }
+.libro-grimorio .lb-faccia.risguardo { background-color: #160c0c; }
+
+/* trattato: tela colorata, cornice e titolo in oro; carta chiara, capolettera miniato */
+.libro-trattato .lb-cop { background-image: var(--tela), radial-gradient(ellipse at 40% 35%, rgba(255,255,255,.1), transparent 60%), linear-gradient(90deg, rgba(0,0,0,.45), transparent 7%, transparent 93%, rgba(0,0,0,.35)); color: #e2c56f; }
+.lb-cornice { position: absolute; inset: 6%; border: 2px solid #c9a94f; box-shadow: 0 0 0 5px transparent, 0 0 0 6px #c9a94f, inset 0 0 0 4px transparent, inset 0 0 0 5px rgba(201,169,79,.6); border-radius: 2px; }
+.libro-trattato .lb-cop-titolo { font-family: 'Cinzel', serif; font-weight: 600; letter-spacing: .06em; font-size: 1.9em; background: linear-gradient(180deg, #f3dc8e, #b8902f); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 1px 0 rgba(0,0,0,.7)); }
+.libro-trattato .lb-faccia.carta { background-color: #efe5cf; color: #24201a; }
+.libro-trattato .lb-testo { font-family: 'Alegreya', Georgia, serif; }
+.libro-trattato .lb-testo .lb-cap { font-family: 'Cinzel', serif; font-weight: 600; font-size: 1.35em; letter-spacing: .05em; color: #6b1d12; }
+.libro-trattato .lb-testo p.capo::first-letter { font: 600 2.9em/.85 'Cinzel', serif; float: left; color: #f1dc9a; background: #6b1d12; padding: .08em .14em .02em; margin: .06em .14em 0 0; border: 2px solid #c9a94f; }
+.libro-trattato .lb-faccia.risguardo { background-color: #1f2d4a; }
+
+/* diario: cuoio consunto con cinghia; carta a righe, scritto a mano (corsivo) */
+.lb-cinghia { position: absolute; right: 9%; top: 0; bottom: 0; width: 7%; background: linear-gradient(90deg, #2a170b, #5a361b 40%, #2a170b); box-shadow: 0 0 6px rgba(0,0,0,.6); }
+.lb-cinghia::after { content: ''; position: absolute; left: -35%; right: -35%; top: 46%; height: 8%; border: 3px solid #9b8a63; border-radius: 3px; }
+.libro-diario .lb-cop-dentro { inset: 22% 26% 30% 12%; }
+.libro-diario .lb-cop-titolo { font-family: 'Fell', serif; font-style: italic; font-size: 1.7em; background: #d9c9a4; color: #3a2a1a; padding: .3em .5em; text-shadow: none; box-shadow: 0 1px 3px rgba(0,0,0,.6); transform: rotate(-1.5deg); }
+.libro-diario .lb-cop .lb-stemma { width: 26%; opacity: .5; }
+.libro-diario .lb-faccia.carta { background-color: #e6dbc2; }
+/* ogni riga di testo cade su una riga della carta: tutto alto un multiplo della rigatura */
+.libro-diario .lb-testo { --riga: calc(var(--fs) * 1.6); font-family: 'Fell', serif; font-style: italic; text-align: left; line-height: var(--riga); color: #2a2a3a;
+  background: repeating-linear-gradient(180deg, transparent 0 calc(var(--riga) - 1px), rgba(70, 90, 130, .25) calc(var(--riga) - 1px) var(--riga));
+  background-position: 0 .18em; }
+.libro-diario .lb-testo > * { line-height: var(--riga); margin: 0; }
+.libro-diario .lb-testo p { text-indent: 0; }
+.libro-diario .lb-testo .lb-cap { font: italic 1.25em/var(--riga) 'Fell', serif; line-height: var(--riga); text-align: left; text-decoration: underline; text-decoration-color: rgba(42,42,58,.4); }
+.libro-diario .lb-testo .lb-cap:not(:first-child) { margin-top: var(--riga); }
+.libro-diario .lb-testo .lb-fregio { height: var(--riga); margin: 0; }
+.libro-diario .lb-faccia.risguardo { background: #8a6a45; background-image: var(--grana); }
+
+/* lettera: busta col sigillo; rotto il sigillo il foglio si apre; un foglio alla volta */
+.libro-lettera .lb-libro { width: var(--W); perspective: none; transform: none; }
+.lb-busta { position: absolute; inset: 22% 0; background-color: #d8c49c; background-image: var(--grana), linear-gradient(160deg, transparent 49.6%, rgba(90,60,25,.35) 50%, transparent 50.6%), linear-gradient(20deg, transparent 49.6%, rgba(90,60,25,.35) 50%, transparent 50.6%); border-radius: 3px; box-shadow: inset 0 0 30px rgba(110, 70, 25, .4); display: flex; align-items: center; justify-content: center; transition: opacity .6s ease .5s, transform .8s ease .4s; }
+.lb-busta-titolo { position: absolute; bottom: 10%; left: 0; right: 0; text-align: center; font: calc(var(--fs) * 1.7) 'Pinyon', cursive; color: #3a2614; }
+.lb-sigillo { width: 22%; aspect-ratio: 1; border-radius: 47% 53% 50% 50%; background: radial-gradient(circle at 38% 35%, #c4342c, #8a1712 55%, #5a0c08); box-shadow: 0 3px 6px rgba(0,0,0,.45), inset 0 0 8px rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; transition: transform .5s ease, opacity .5s ease; }
+.lb-sigillo .lb-stemma { width: 58%; fill: #5a0c08; filter: drop-shadow(0 1px 0 rgba(255,140,120,.35)); }
+.lb-libro.rotto .lb-sigillo { transform: scale(1.15) rotate(-12deg); opacity: 0; }
+.lb-libro.aperta .lb-busta { opacity: 0; transform: translateY(12%) scale(.96); pointer-events: none; }
+.lb-foglio-lettera { opacity: 0; transform: scaleY(.25) translateY(10%); transform-origin: center 60%; transition: opacity .5s ease, transform .7s cubic-bezier(.2, .8, .2, 1); pointer-events: none; }
+.lb-foglio-lettera.su { opacity: 1; transform: none; transition-delay: .55s, .55s; pointer-events: auto; }
+.lb-foglio-lettera.via { opacity: 0; transform: translateX(-30%) rotate(-4deg); transition-delay: 0s; }
+.lb-faccia.lb-foglio-lettera.carta { inset: 0; border-radius: 2px; background-color: #e9dcbc;
+  background-image: var(--grana), linear-gradient(180deg, transparent 33%, rgba(90,60,25,.12) 33.3%, transparent 33.8%, transparent 66.4%, rgba(90,60,25,.12) 66.6%, transparent 67%); }
+.libro-lettera .lb-testo { inset: 9% 11%; font-family: 'Fell', serif; font-style: italic; text-align: left; color: #2a1d12; }
+.libro-lettera .lb-testo .lb-cap { font: 1.9em/1.1 'Pinyon', cursive; text-align: left; }
+.libro-lettera .lb-testo p { text-indent: 0; }
+
+/* barra: frecce, pagine, chiudi */
+.lb-barra { display: flex; align-items: center; gap: 14px; font: 500 15px 'Alegreya SC', serif; color: #e6dcc3; text-shadow: 0 1px 2px #000; }
+.lb-info { min-width: 200px; text-align: center; letter-spacing: .04em; opacity: .9; }
+.lb-barra button { font: 22px/1 'Alegreya', serif; color: #e6dcc3; background: rgba(20, 14, 8, .55); border: 1px solid rgba(230, 220, 195, .35); border-radius: 50%; width: 38px; height: 38px; cursor: pointer; transition: background .2s, opacity .2s; }
+.lb-barra button:hover:not(:disabled) { background: rgba(80, 55, 25, .8); }
+.lb-barra button:disabled { opacity: .3; cursor: default; }
+.lb-barra .lb-chiudi { font-size: 16px; margin-left: 18px; }
+
+/* NWN in schermo intero esclusivo (ridotto a icona dal Companion): dietro ci sarebbe il desktop,
+   il velo diventa pieno ma resta a tema */
+body.libro.esclusivo #velo { background-color: #0b0806; }
+body.libro-grimorio.esclusivo #velo { background-image: radial-gradient(ellipse 60% 70% at 50% 55%, #2a0a0a, #070203 100%); }
+body.libro-trattato.esclusivo #velo { background-image: radial-gradient(ellipse 65% 75% at 50% 52%, #2e2210, #0c0804 100%); }
+body.libro-diario.esclusivo #velo { background-image: radial-gradient(ellipse 65% 75% at 50% 52%, #18202a, #05070a 100%); }
+body.libro-lettera.esclusivo #velo { background-image: radial-gradient(ellipse 50% 60% at 50% 50%, #3a2610, #0a0602 100%); }
+
+/* riaperto alla stessa pagina (anteprima del redattore): niente animazioni */
+.lb-libro.subito, .lb-libro.subito *, .lb-tavolo.subito { transition: none !important; }

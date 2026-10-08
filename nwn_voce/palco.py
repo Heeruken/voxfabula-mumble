@@ -415,7 +415,8 @@ class _Api:
                     self._arriva.clear()
                     continue
                 self._presa = True
-            return {"sid": s.get("sid"), "tipo": s.get("tipo"), "dati": s.get("dati") or {}}
+            return {"sid": s.get("sid"), "tipo": s.get("tipo"), "dati": s.get("dati") or {},
+                    "esclusivo": bool(s.get("esclusivo"))}
         return None
 
     def oggetto(self) -> str:
@@ -571,7 +572,8 @@ def _overlay(porta: int, segreto: str) -> int:
                 stile(mia)
                 x, y, w, h = rett or pieno
                 C._u32.SetWindowPos(mia, C.HWND_TOPMOST, x, y, w, h, C.SWP_NOACTIVATE)
-            api.nuova(scena)
+            # schermo intero esclusivo: NWN e' ridotto a icona, sotto c'e' il desktop (la pagina copre tutto)
+            api.nuova(dict(scena, esclusivo=esclusivo))
             api._finestra.show()
             if mia:
                 C._adatta(mia, rett or pieno)

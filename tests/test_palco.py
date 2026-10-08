@@ -282,7 +282,7 @@ class ApiOverlayTest(unittest.TestCase):
         api._scena = {"sid": "ab12", "tipo": "esamina", "dati": {"x": 1}}
         api._arriva.set()
         t.join(3)
-        self.assertEqual(risultato, [{"sid": "ab12", "tipo": "esamina", "dati": {"x": 1}}])
+        self.assertEqual(risultato, [{"sid": "ab12", "tipo": "esamina", "dati": {"x": 1}, "esclusivo": False}])
         chiamate = []
         api._dopo_chiusa = lambda: chiamate.append(1)
         self.assertEqual(api.chiudi("esc"), "ab12")    # la pagina l'aveva: va ripulita
