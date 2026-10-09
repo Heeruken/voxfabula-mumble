@@ -223,13 +223,19 @@ async function avvia() {
   chiusa = false;
   const dati = ini.dati || {};
   document.body.classList.toggle('oscura', !!dati.oscura);
-  // la foto del gioco sotto il velo: la finestra non e' trasparente a meta', cosi' il gioco si vede lo stesso
+  // la foto del gioco sotto il velo: la finestra non e' trasparente a meta', cosi' il gioco si vede lo stesso.
+  // Decodificata PRIMA: la finestra compare quando la foto e' gia' pronta da disegnare (niente nero)
   clearTimeout(viaFoto);
+  if (ini.sfondo) { try { const im = new Image(); im.src = ini.sfondo; await im.decode(); } catch (e) { /* si mostra lo stesso */ } }
   $('fondo').style.backgroundImage = ini.sfondo ? `url("${ini.sfondo}")` : '';
   document.body.classList.toggle('con-foto', !!ini.sfondo);
   // NWN in schermo intero esclusivo e senza foto: dietro ci sarebbe il desktop, il velo copre tutto
   document.body.classList.toggle('esclusivo', !!ini.esclusivo && !ini.sfondo);
-  document.body.classList.add('in-scena');
+  // foto al suo posto: il Companion puo' mostrare la finestra (prima: fotogrammi neri). Il primo
+  // fotogramma visibile e' la foto pura (= il gioco); il velo si scurisce da li' (requestAnimationFrame
+  // aspetta che la finestra si veda davvero)
+  try { const a = api(); if (a && a.pronta) a.pronta(ini.sid); } catch (e) { /* vecchio Companion o prova */ }
+  requestAnimationFrame(() => { if (mio === giro) document.body.classList.add('in-scena'); });
   $('titolo').textContent = dati.titolo || '';
   if (dati.testo) diario(dati.testo);
   azioni(dati.azioni);

@@ -246,6 +246,7 @@ class _Api:
         self._chiuso = threading.Event()
         self._pausa_da = None          # monotonic d'inizio della pausa in corso
         self._in_pausa = 0.0           # secondi di pausa gia' conclusi
+        self._nwn_esclusivo = None     # NWN ridotto a icona (schermo intero esclusivo): torna su prima di chiudere
 
     def parte(self) -> None:
         if not self._partito.is_set():
@@ -278,6 +279,10 @@ class _Api:
         if self._chiuso.is_set():
             return
         self._chiuso.set()
+        if self._nwn_esclusivo:
+            # NWN torna su DIETRO al nero del lettore (sempre in primo piano), poi il lettore sparisce
+            _u32.ShowWindow(self._nwn_esclusivo, SW_RESTORE)
+            time.sleep(0.4)
         if self._finestra is not None:
             try:
                 self._finestra.destroy()
@@ -355,11 +360,12 @@ def _riproduci_file(video: str) -> int:
     rett = None if esclusivo else area_di_gioco(nwn)
     log.info("NWN %s, davanti=%s, esclusivo=%s, area=%s",
              "aperto" if nwn else "chiuso", era_davanti, esclusivo, rett)
-    if esclusivo:
-        _u32.ShowWindow(nwn, SW_MINIMIZE)
 
     import webview
     api = _Api()
+    # in esclusivo NWN si riduce a icona solo DOPO che il nero del lettore copre lo schermo, e torna
+    # su PRIMA che il lettore si chiuda: prima, all'inizio e alla fine, si vedeva il desktop
+    api._nwn_esclusivo = nwn if esclusivo else None
     api._finestra = webview.create_window(TITOLO, pagina, js_api=api, fullscreen=rett is None,
                                           frameless=True, easy_drag=False, on_top=True, hidden=True,
                                           background_color="#000000", focus=True)
@@ -372,10 +378,14 @@ def _riproduci_file(video: str) -> int:
             if mia:
                 break
             time.sleep(0.05)
+        if mia:
+            _adatta(mia, rett)                # al suo posto prima di comparire (niente lampo al centro)
         api._finestra.show()
         if mia:
             _adatta(mia, rett)
         log.info("in primo piano: %s", porta_davanti(mia))
+        if esclusivo:
+            _u32.ShowWindow(nwn, SW_MINIMIZE)
         if not api._partito.wait(AVVIO_MAX):
             log.warning("il video non e' partito entro %s s", AVVIO_MAX)
             api._esito = ERRORE

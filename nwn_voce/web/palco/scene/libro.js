@@ -265,6 +265,9 @@ export default async function (palco) {
 
   let aperti = 0;             // fogli girati (libro) / foglio mostrato (lettera, -1 = busta chiusa)
   if (lettera) aperti = -1;
+  // il sigillo e' di quella lettera nel mondo: se qualcuno l'ha gia' rotto, lo si trova rotto
+  let giaRotto = lettera && !!(palco.dati && palco.dati.sigillo_rotto);
+  if (giaRotto) libro.classList.add('rotto-prima');
   const n = fogli.length;
   const info = h('span', 'lb-info');
   const bPrima = h('button', 'lb-freccia', '‹'), bDopo = h('button', 'lb-freccia', '›'), bChiudi = h('button', 'lb-chiudi', '✕');
@@ -275,7 +278,7 @@ export default async function (palco) {
     if (lettera) {
       libro.classList.toggle('aperta', aperti >= 0);
       fogli.forEach((f, i) => { f.classList.toggle('su', i === aperti); f.classList.toggle('via', i < aperti); });
-      info.textContent = aperti < 0 ? 'Rompi il sigillo' : (n > 1 ? `Foglio ${aperti + 1} di ${n}` : '');
+      info.textContent = aperti < 0 ? (giaRotto ? 'Il sigillo è già rotto · apri' : 'Rompi il sigillo') : (n > 1 ? `Foglio ${aperti + 1} di ${n}` : '');
       bPrima.disabled = aperti < 0; bDopo.disabled = aperti >= n - 1;
       return;
     }
@@ -301,7 +304,10 @@ export default async function (palco) {
     if (lettera) {
       const v = Math.max(-1, Math.min(n - 1, aperti + dir));
       if (v === aperti) return;
-      if (aperti === -1 && v === 0) libro.classList.add('rotto');
+      if (aperti === -1 && v === 0) {
+        libro.classList.add('rotto');
+        if (!giaRotto && !palco.prova) { giaRotto = true; palco.invia('sigillo', {}); }   // ora e' rotto per tutti
+      }
       aperti = v; disponi(); return;
     }
     const i = dir > 0 ? aperti : aperti - 1;

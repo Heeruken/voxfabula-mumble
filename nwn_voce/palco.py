@@ -52,6 +52,9 @@ from . import APP_NAME, __version__, paths, settings
 log = logging.getLogger("nwn_voce.palco")
 
 
+# la pagina prepara la scena (foto decodificata, velo) prima che la finestra compaia; oltre: si mostra lo stesso
+PRONTA_MAX = 0.8
+
 def foto_gioco(rett) -> str:
     """Foto dell'area di gioco (x, y, w, h in pixel veri) come data URL JPEG, "" se non riesce o e' nera.
     Su Windows la finestra di pywebview non e' trasparente a meta' (dietro alla pagina c'e' il suo
@@ -436,10 +439,20 @@ class _Api:
         self._arriva = threading.Event()
         self._finito = threading.Event()        # l'overlay si chiude del tutto
         self._dopo_chiusa = None                # fn: nascondi (dal processo)
+        self._pronto = threading.Event()        # la pagina ha preparato la scena (pronta())
+        self._chiudendo = False                 # fine scena in corso: la finestra la nasconde nascondi()
+
+    def pronta(self, sid="") -> None:
+        """La pagina ha preparato la scena (foto, velo, classi): ora si puo' mostrare la finestra.
+        Prima compariva vuota (nera: la finestra non e' trasparente a meta') per qualche fotogramma."""
+        s = self._scena
+        if s is not None and str(s.get("sid") or "") == str(sid or ""):
+            self._pronto.set()
 
     def nuova(self, scena: dict) -> None:
         """Arriva una scena: la pagina (ferma in inizio()) la prende."""
         with self._lock_scena:
+            self._pronto.clear()
             self._presa = False
             self._scena = scena
             self._arriva.set()
@@ -489,6 +502,7 @@ class _Api:
             if self._scena is None:
                 return None
             sid, presa = str(self._scena.get("sid") or ""), self._presa
+            self._chiudendo = True            # il guardiano non deve nasconderla di colpo (vedi nascondi)
             self._scena = None
             self._presa = False
             self._arriva.clear()
@@ -595,6 +609,8 @@ def _overlay(porta: int, segreto: str) -> int:
                 if C._u32.GetForegroundWindow() != nwn:
                     C.porta_davanti(nwn)      # qualcuno l'ha preso nel frattempo
                 log.info("scena finita: NWN di nuovo davanti")
+            if dopo_scena:
+                api._chiudendo = False
             elif presa_da_noi and davanti_prima:
                 C.porta_davanti(davanti_prima)   # al Connetti: chi c'era (di solito il Companion)
     api._dopo_chiusa = lambda: nascondi(dopo_scena=True)
@@ -607,8 +623,6 @@ def _overlay(porta: int, segreto: str) -> int:
         pieno = (0, 0, C._u32.GetSystemMetrics(0), C._u32.GetSystemMetrics(1))
         # la foto del gioco PRIMA di comparire (e prima di ridurre a icona NWN): e' lo sfondo del velo
         sfondo = foto_gioco(rett or pieno) if nwn else ""
-        if esclusivo:
-            C._u32.ShowWindow(nwn, C.SW_MINIMIZE)
         with lock_vista:
             stato.update(nwn=nwn, rett=rett, esclusivo=esclusivo)
             log.info("scena %s (%s), NWN area=%s esclusivo=%s foto=%s", scena.get("tipo"), scena.get("sid"),
@@ -620,10 +634,16 @@ def _overlay(porta: int, segreto: str) -> int:
                 C._u32.SetWindowPos(mia, C.HWND_TOPMOST, x, y, w, h, C.SWP_NOACTIVATE)
             # schermo intero esclusivo: NWN e' ridotto a icona, sotto c'e' il desktop (la pagina copre tutto)
             api.nuova(dict(scena, esclusivo=esclusivo, sfondo=sfondo))
+            # si mostra solo quando la pagina ha gia' messo foto e velo: niente fotogrammi neri
+            if not api._pronto.wait(PRONTA_MAX):
+                log.info("la pagina non ha detto 'pronta' entro %.1f s: si mostra lo stesso", PRONTA_MAX)
             api._finestra.show()
             if mia:
                 C._adatta(mia, rett or pieno)
             C.porta_davanti(mia)
+            if esclusivo:
+                # solo ora che la scena copre lo schermo: prima si vedeva il desktop
+                C._u32.ShowWindow(nwn, C.SW_MINIMIZE)
 
     def ascolta():
         # dall'app: scene da aprire, messaggi dello script per la pagina, "chiudi", "esci"
@@ -676,8 +696,10 @@ def _overlay(porta: int, segreto: str) -> int:
             if not mia:
                 continue
             if api._scena is None:
-                # rete di sicurezza: comparsa da sola (navigazione, Windows)? si rinasconde
-                if C._u32.IsWindowVisible(mia):
+                # rete di sicurezza: comparsa da sola (navigazione, Windows)? si rinasconde.
+                # MAI mentre una scena si sta chiudendo: la chiude nascondi() con NWN gia' davanti
+                # (prima la tagliava a meta' dissolvenza, e per un attimo si vedeva il desktop)
+                if C._u32.IsWindowVisible(mia) and not api._chiudendo:
                     log.info("overlay visibile senza scena: nascosto")
                     nascondi()
             else:
