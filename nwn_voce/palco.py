@@ -47,7 +47,7 @@ import threading
 import time
 from typing import Optional
 
-from . import APP_NAME, paths, settings
+from . import APP_NAME, __version__, paths, settings
 
 log = logging.getLogger("nwn_voce.palco")
 
@@ -63,7 +63,9 @@ def foto_gioco(rett) -> str:
         from PIL import Image, ImageGrab, ImageStat
         x, y, w, h = rett
         img = ImageGrab.grab(bbox=(x, y, x + w, y + h), all_screens=True).convert("RGB")
-        if max(ImageStat.Stat(img.resize((64, 36))).mean) < 4:     # nera (schermo intero esclusivo)
+        luce = max(ImageStat.Stat(img.resize((64, 36))).mean)
+        log.info("foto del gioco %dx%d, luminosita' media %.0f", img.width, img.height, luce)
+        if luce < 4:                                                # nera (schermo intero esclusivo)
             return ""
         if img.width > 1920:
             img = img.resize((1920, round(img.height * 1920 / img.width)), Image.BILINEAR)
@@ -111,9 +113,25 @@ def trova_oggetto(nome: str) -> Optional[str]:
 
 def cartella_cache() -> str:
     """Il profilo di WebView2 dell'overlay: cache del JavaScript gia' compilato e degli shader.
-    Solo roba del browser (nessun dato del giocatore): si puo' cancellare quando si vuole."""
+    Solo roba del browser (nessun dato del giocatore): si puo' cancellare quando si vuole.
+    Con una versione nuova del Companion si ricomincia da zero: la cache HTTP (stessa porta, stessa
+    origine) servirebbe le pagine VECCHIE del palco al posto di quelle aggiornate (successo in 1.3.3)."""
     d = os.path.join(paths.data_dir(), "palco_cache")
+    segno = os.path.join(d, "versione.txt")
+    try:
+        prima = open(segno, encoding="utf-8").read().strip()
+    except OSError:
+        prima = ""
+    if prima != __version__ and os.path.isdir(d):
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+        log.info("cache delle pagine svuotata (Companion %s -> %s)", prima or "?", __version__)
     os.makedirs(d, exist_ok=True)
+    try:
+        with open(segno, "w", encoding="utf-8") as f:
+            f.write(__version__)
+    except OSError:
+        pass
     return d
 
 
