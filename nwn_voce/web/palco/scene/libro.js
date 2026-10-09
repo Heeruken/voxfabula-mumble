@@ -1,7 +1,8 @@
 // Scena "libro": un libro da sfogliare sopra il gioco, che si intravede dietro (niente cutscene).
 //
 // Il libro arriva come pacchetto (docs/libri/libro.py nel repo del modulo): palco.oggetto() =
-// { tipo, titolo, autore?, sottotitolo?, colore?, stemma?, copertina?, testo (il .md), immagini {nome: dataURL} }
+// { tipo, titolo, autore?, sottotitolo?, colore?, stemma?, fede?, copertina?, testo (il .md), immagini {nome: dataURL} }
+// fede = { nome, titolo, oro, cera, inchiostro }: il simbolo sacro della divinita' nelle sue finiture (vince sullo stemma)
 // Quattro tipi, ognuno con la sua rilegatura, carta e scrittura: grimorio, trattato, diario, lettera.
 // Le pagine si fanno qui, misurando il testo nella pagina vera (font e misure dello schermo);
 // "---" nel testo forza una pagina nuova. Il server non decide niente: si legge e basta.
@@ -41,6 +42,12 @@ function stemma(nome, immagini, cls = '') {
   if (immagini && immagini[nome]) return `<img class="lb-stemma ${cls}" src="${immagini[nome]}" alt="">`;
   const p = STEMMI[nome];
   return p ? `<svg class="lb-stemma ${cls}" viewBox="0 0 100 100" aria-hidden="true">${p}</svg>` : '';
+}
+
+// il simbolo del libro in una finitura: quello della divinita' se c'e', se no lo stemma
+function stemmaDi(lk, fin, cls = '', riserva = lk.stemma) {
+  if (lk.fede && lk.fede[fin]) return `<img class="lb-stemma fede ${fin} ${cls}" src="${lk.fede[fin]}" alt="">`;
+  return stemma(riserva, lk.immagini, cls);
 }
 
 // ---------------------------------------------------------------- testo -> blocchi
@@ -156,17 +163,17 @@ function copertina(lk, quarta = false) {
   const borchie = t === 'grimorio' ? '<i class="lb-angolo a1"></i><i class="lb-angolo a2"></i><i class="lb-angolo a3"></i><i class="lb-angolo a4"></i>' : '';
   const cinghia = t === 'diario' ? '<i class="lb-cinghia"></i>' : '';
   const cornice = t === 'trattato' ? '<i class="lb-cornice"></i>' : '';
-  if (quarta) return `<div class="lb-cop lb-quarta">${borchie}${cornice}${stemma(lk.stemma, lk.immagini, 'piccolo')}</div>`;
+  if (quarta) return `<div class="lb-cop lb-quarta">${borchie}${cornice}${stemmaDi(lk, 'oro', 'piccolo')}</div>`;
   return `<div class="lb-cop">${borchie}${cornice}${cinghia}
     <div class="lb-cop-dentro">
       <div class="lb-cop-titolo">${esc(lk.titolo)}</div>
-      ${stemma(lk.stemma, lk.immagini)}
+      ${stemmaDi(lk, 'oro')}
       ${lk.autore ? `<div class="lb-cop-autore">${esc(lk.autore)}</div>` : ''}
     </div></div>`;
 }
 function frontespizio(lk) {
   return `<div class="lb-front">
-    ${stemma(lk.stemma, lk.immagini, 'front')}
+    ${stemmaDi(lk, 'inchiostro', 'front')}
     <div class="lb-front-titolo">${esc(lk.titolo)}</div>
     ${lk.sottotitolo ? `<div class="lb-front-sotto">${esc(lk.sottotitolo)}</div>` : ''}
     <div class="lb-fregio"><span>❦</span></div>
@@ -257,7 +264,7 @@ export default async function (palco) {
     }
   } else {
     // lettera: una busta col sigillo; rotto il sigillo, il foglio si apre
-    const busta = h('div', 'lb-busta', `<div class="lb-sigillo">${stemma(lk.stemma || 'rosa', lk.immagini)}</div>
+    const busta = h('div', 'lb-busta', `<div class="lb-sigillo">${stemmaDi(lk, 'cera', '', lk.stemma || 'rosa')}</div>
       <div class="lb-busta-titolo">${esc(lk.titolo)}</div>`);
     libro.append(busta);
     facce.forEach((fc, i) => { const f = h('div', 'lb-faccia fronte lb-foglio-lettera ' + fc.cls, fc.html); f.dataset.i = i; libro.append(f); fogli.push(f); });

@@ -167,6 +167,11 @@ body.libro-lettera #velo { background: radial-gradient(ellipse 50% 60% at 50% 50
 .lb-busta-titolo { position: absolute; bottom: 10%; left: 0; right: 0; text-align: center; font: calc(var(--fs) * 1.7) 'Pinyon', cursive; color: #3a2614; }
 .lb-sigillo { width: 22%; aspect-ratio: 1; border-radius: 47% 53% 50% 50%; background: radial-gradient(circle at 38% 35%, #c4342c, #8a1712 55%, #5a0c08); box-shadow: 0 3px 6px rgba(0,0,0,.45), inset 0 0 8px rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; transition: transform .5s ease, opacity .5s ease; }
 .lb-sigillo .lb-stemma { width: 58%; fill: #5a0c08; filter: drop-shadow(0 1px 0 rgba(255,140,120,.35)); }
+/* simbolo sacro (fede): immagini gia' nella loro finitura, niente fill */
+.lb-cop .lb-stemma.fede { width: 46%; filter: drop-shadow(0 2px 1px rgba(0,0,0,.75)) drop-shadow(0 0 6px rgba(0,0,0,.35)); }
+.lb-stemma.fede.front { width: 30%; opacity: .9; }
+.libro-diario .lb-cop .lb-stemma.fede { width: 34%; opacity: .9; }
+.lb-sigillo .lb-stemma.fede { width: 80%; filter: drop-shadow(0 1px 0 rgba(255,140,120,.3)) drop-shadow(0 -1px 0 rgba(40,0,0,.55)); }
 .lb-libro.rotto .lb-sigillo { transform: scale(1.15) rotate(-12deg); opacity: 0; }
 /* sigillo gia' rotto da qualcun altro: spezzato in due, la meta' destra scivolata via, cera opaca */
 .lb-libro.rotto-prima .lb-sigillo { position: relative; background: none; box-shadow: none; transform: rotate(8deg); filter: saturate(.6) brightness(.82); }
