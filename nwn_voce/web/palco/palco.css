@@ -22,6 +22,11 @@ html, body {
   user-select: none;
 }
 
+/* la foto del gioco presa un attimo prima della scena (la finestra non e' trasparente a meta'):
+   compare subito e se ne va per ultima, cosi' sembra il gioco vero sotto il velo */
+#fondo { position: fixed; inset: 0; background: #000 center / cover no-repeat; display: none; }
+body.con-foto #fondo { display: block; }
+
 /* il gioco resta visibile sotto, scurito; ai bordi piu' scuro (vignettatura). "oscura" = oggetto
    speciale: il server ha gia' portato il gioco a nero, qui solo la profondita' */
 #velo {

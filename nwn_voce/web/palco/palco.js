@@ -130,6 +130,9 @@ function ripulisci() {
   filo = Promise.resolve();
   ferma($('dado'));
   document.body.classList.remove('in-scena', 'oscura', 'esclusivo');
+  // la foto resta finche' la finestra non sparisce (sotto c'e' gia' il gioco vero), poi si libera
+  clearTimeout(viaFoto);
+  viaFoto = setTimeout(() => { document.body.classList.remove('con-foto'); $('fondo').style.backgroundImage = ''; }, 1500);
   $('titolo').textContent = '';
   $('scena').innerHTML = '';
   $('azioni').innerHTML = '';
@@ -208,6 +211,7 @@ async function tiro(m) {
 }
 
 let aspetto = false;
+let viaFoto = 0;
 async function avvia() {
   if (aspetto) return;                       // c'e' gia' chi aspetta la prossima scena
   aspetto = true;
@@ -219,8 +223,12 @@ async function avvia() {
   chiusa = false;
   const dati = ini.dati || {};
   document.body.classList.toggle('oscura', !!dati.oscura);
-  // NWN in schermo intero esclusivo e' ridotto a icona: dietro ci sarebbe il desktop, il velo copre tutto
-  document.body.classList.toggle('esclusivo', !!ini.esclusivo);
+  // la foto del gioco sotto il velo: la finestra non e' trasparente a meta', cosi' il gioco si vede lo stesso
+  clearTimeout(viaFoto);
+  $('fondo').style.backgroundImage = ini.sfondo ? `url("${ini.sfondo}")` : '';
+  document.body.classList.toggle('con-foto', !!ini.sfondo);
+  // NWN in schermo intero esclusivo e senza foto: dietro ci sarebbe il desktop, il velo copre tutto
+  document.body.classList.toggle('esclusivo', !!ini.esclusivo && !ini.sfondo);
   document.body.classList.add('in-scena');
   $('titolo').textContent = dati.titolo || '';
   if (dati.testo) diario(dati.testo);

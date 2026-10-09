@@ -51,6 +51,29 @@ from . import APP_NAME, paths, settings
 
 log = logging.getLogger("nwn_voce.palco")
 
+
+def foto_gioco(rett) -> str:
+    """Foto dell'area di gioco (x, y, w, h in pixel veri) come data URL JPEG, "" se non riesce o e' nera.
+    Su Windows la finestra di pywebview non e' trasparente a meta' (dietro alla pagina c'e' il suo
+    fondo, nero): la pagina mette questa foto sotto il velo e il gioco "si vede" lo stesso. Mentre si
+    legge o si esamina il gioco dietro e' fermo, quindi non si nota la differenza."""
+    try:
+        import base64
+        import io
+        from PIL import Image, ImageGrab, ImageStat
+        x, y, w, h = rett
+        img = ImageGrab.grab(bbox=(x, y, x + w, y + h), all_screens=True).convert("RGB")
+        if max(ImageStat.Stat(img.resize((64, 36))).mean) < 4:     # nera (schermo intero esclusivo)
+            return ""
+        if img.width > 1920:
+            img = img.resize((1920, round(img.height * 1920 / img.width)), Image.BILINEAR)
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=82)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:  # noqa: BLE001
+        log.exception("foto del gioco non riuscita")
+        return ""
+
 TIPO_RE = re.compile(r"^[a-z0-9_]{1,24}$")
 NOME_RE = re.compile(r"^[a-z0-9_-]{1,40}$")
 TITOLO = APP_NAME + " - Palco"
@@ -415,8 +438,11 @@ class _Api:
                     self._arriva.clear()
                     continue
                 self._presa = True
-            return {"sid": s.get("sid"), "tipo": s.get("tipo"), "dati": s.get("dati") or {},
-                    "esclusivo": bool(s.get("esclusivo"))}
+            out = {"sid": s.get("sid"), "tipo": s.get("tipo"), "dati": s.get("dati") or {},
+                   "esclusivo": bool(s.get("esclusivo"))}
+            if s.get("sfondo"):
+                out["sfondo"] = s["sfondo"]     # foto del gioco sotto il velo (vedi foto_gioco)
+            return out
         return None
 
     def oggetto(self) -> str:
@@ -559,21 +585,23 @@ def _overlay(porta: int, segreto: str) -> int:
         nwn = C.finestra_nwn()
         esclusivo = bool(nwn) and C.nwn_esclusivo()
         rett = None if esclusivo else C.area_di_gioco(nwn)
-        if esclusivo:
-            C._u32.ShowWindow(nwn, C.SW_MINIMIZE)
         # niente NWN (o schermo intero esclusivo): tutto lo schermo
         pieno = (0, 0, C._u32.GetSystemMetrics(0), C._u32.GetSystemMetrics(1))
+        # la foto del gioco PRIMA di comparire (e prima di ridurre a icona NWN): e' lo sfondo del velo
+        sfondo = foto_gioco(rett or pieno) if nwn else ""
+        if esclusivo:
+            C._u32.ShowWindow(nwn, C.SW_MINIMIZE)
         with lock_vista:
             stato.update(nwn=nwn, rett=rett, esclusivo=esclusivo)
-            log.info("scena %s (%s), NWN area=%s esclusivo=%s", scena.get("tipo"), scena.get("sid"),
-                     rett, esclusivo)
+            log.info("scena %s (%s), NWN area=%s esclusivo=%s foto=%s", scena.get("tipo"), scena.get("sid"),
+                     rett, esclusivo, "si" if sfondo else "no")
             mia = stato["mia"] = stato["mia"] or _finestra_mia(TITOLO)
             if mia:                           # al suo posto PRIMA di comparire
                 stile(mia)
                 x, y, w, h = rett or pieno
                 C._u32.SetWindowPos(mia, C.HWND_TOPMOST, x, y, w, h, C.SWP_NOACTIVATE)
             # schermo intero esclusivo: NWN e' ridotto a icona, sotto c'e' il desktop (la pagina copre tutto)
-            api.nuova(dict(scena, esclusivo=esclusivo))
+            api.nuova(dict(scena, esclusivo=esclusivo, sfondo=sfondo))
             api._finestra.show()
             if mia:
                 C._adatta(mia, rett or pieno)
@@ -634,9 +662,18 @@ def _overlay(porta: int, segreto: str) -> int:
                 if C._u32.IsWindowVisible(mia):
                     log.info("overlay visibile senza scena: nascosto")
                     nascondi()
-            elif stato["rett"] and not stato["esclusivo"]:
-                # resta incollata al gioco mentre c'e' una scena
-                C._incolla(mia, C.area_di_gioco(stato["nwn"]) or stato["rett"])
+            else:
+                nwn = stato["nwn"]
+                if nwn and C._u32.GetForegroundWindow() == nwn:
+                    # durante la scena si e' tornati sul gioco (Win, Alt+Tab, barra): la scena torna sopra
+                    if stato["esclusivo"]:
+                        C._u32.ShowWindow(nwn, C.SW_MINIMIZE)
+                    C._u32.SetWindowPos(mia, C.HWND_TOPMOST, 0, 0, 0, 0, C.SWP_NOSIZE | C.SWP_NOMOVE)
+                    C.porta_davanti(mia)
+                    log.info("tornati sul gioco durante la scena: overlay di nuovo sopra")
+                if stato["rett"] and not stato["esclusivo"]:
+                    # resta incollata al gioco mentre c'e' una scena
+                    C._incolla(mia, C.area_di_gioco(nwn) or stato["rett"])
 
     # private_mode=False + cartella fissa: WebView2 non riparte da zero a ogni avvio (profilo,
     # JavaScript compilato, shader della scheda video restano). Cookie e storage non servono a
