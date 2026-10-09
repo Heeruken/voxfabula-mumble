@@ -111,7 +111,7 @@ function inline(s, img, rune) {
   const pezzi = String(s).split(/(:[a-z0-9_-]+:)/);
   let t = pezzi.map(p => (/^:[a-z0-9_-]+:$/.test(p) ? p : esc(rune ? runa(p) : p))).join('');
   t = t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>');
-  t = t.replace(/:([a-z0-9_-]+):/g, (m, n) => (img[n] ? `<img class=lb-simb src=${img[n]} alt>` : m));
+  t = t.replace(/:([a-z0-9_-]+):/g, (m, n) => (img[n] ? `<img class="lb-simb" src="${img[n]}" alt="">` : m));
   return t;
 }
 function blocchi(testo, img, rune) {
@@ -156,13 +156,17 @@ function elBlocco(b) {
       if (b.dida) f.append(h('figcaption', '', b.dida));
       return f;
     }
-    default: return h('p', b.capo ? 'capo' : b.segue ? 'segue' : '', b.html);
+    default: return h('p', [b.capo ? 'capo' : b.segue ? 'segue' : '', b.taglia ? 'taglia' : ''].join(' ').trim(), b.html);
   }
 }
 
-// un paragrafo spezzato a parole (i tag <b>/<i> aperti si richiudono e riaprono dall'altra parte)
+// un paragrafo spezzato a parole (i tag <b>/<i> aperti si richiudono e riaprono dall'altra parte).
+// Gli spazi DENTRO un tag (<img class=.. src=..> dei simboli) non sono confini di parola: spezzato li', il
+// simbolo si rompeva e sulla pagina dopo usciva il resto del tag come testo
+const SPAZI = /(\s+)(?![^<]*>)/;
+const parole = html => html.split(SPAZI).filter((_, i) => i % 2 === 0).length;
 function spezza(html, n) {
-  const pezzi = html.split(/(\s+)/);
+  const pezzi = html.split(SPAZI);
   const a = pezzi.slice(0, n * 2 - 1).join(''), b = pezzi.slice(n * 2).join('');
   const aperti = [];
   for (const m of a.matchAll(/<(\/?)(b|i)>/g)) { if (m[1]) aperti.pop(); else aperti.push(m[2]); }
@@ -187,8 +191,7 @@ function impagina(misura, lista) {
     box.removeChild(el);
     if (b.t === 'p' || b.t === 'cit') {
       // quante parole ci stanno ancora su questa pagina
-      const parole = b.html.split(/\s+/).length;
-      let lo = 0, hi = parole - 1;
+      let lo = 0, hi = parole(b.html) - 1;
       while (lo < hi) {
         const mid = Math.ceil((lo + hi) / 2);
         const prova = elBlocco(Object.assign({}, b, { html: spezza(b.html, mid)[0] }));
@@ -199,8 +202,8 @@ function impagina(misura, lista) {
       }
       if (lo >= 3) {                                        // almeno qualche parola, se no a capo pagina
         const [a, r] = spezza(b.html, lo);
-        pag.push(Object.assign({}, b, { html: a }));
-        coda.unshift(Object.assign({}, b, { html: r, capo: false, segue: true }));
+        pag.push(Object.assign({}, b, { html: a, taglia: true }));     // continua alla pagina dopo
+        coda.unshift(Object.assign({}, b, { html: r, capo: false, segue: true, taglia: false }));
         nuova();
         continue;
       }
@@ -256,7 +259,11 @@ export default async function (palco) {
   if (palco.finita) return;
   if (!lk || !lk.libro) throw new Error('il libro non e\' arrivato');
   lk.tipo = TIPI.includes(lk.tipo) ? lk.tipo : 'trattato';
-  lk.immagini = lk.immagini || {};
+  // solo immagini incorporate (data:image/...;base64): finiscono dentro l'HTML delle pagine
+  const IMG_OK = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+  lk.immagini = Object.fromEntries(Object.entries(lk.immagini || {}).filter(([k, v]) => /^[A-Za-z0-9_-]+$/.test(k) && IMG_OK.test(v)));
+  if (lk.fede && typeof lk.fede !== 'object') lk.fede = null;
+  if (lk.fede) for (const f of ['oro', 'cera', 'inchiostro']) if (!IMG_OK.test(lk.fede[f] || '')) delete lk.fede[f];
   if (lk.simbolo && !/^#[0-9a-f]{6}$/i.test(lk.simbolo)) lk.simbolo = '';
   const st = stile(lk);
   const tipo = lk.tipo, forma = st.forma, foglio = forma === 'foglio', sup = forma === 'superficie';

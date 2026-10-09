@@ -301,6 +301,8 @@ export default async function (palco) {
       if (el.classList.contains('ok') || el.classList.contains('ko') || el.classList.contains('attesa')) return;
       el.classList.add('attesa');
       palco.invia('punto', { id: pt.id });
+      // nessuna risposta dallo script (punto gia' tirato, rete): dopo un po' si puo' ricliccare
+      setTimeout(() => el.classList.remove('attesa'), 12000);
     });
     strato.appendChild(el);
     punti.set(pt.id, { p, el });

@@ -37,7 +37,18 @@ class RegiaTest(_Base):
     def test_nome_strano_e_mancante(self):
         for nome in ("../../windows/system32/x", "C:\\x", "Video", "a b", ""):
             self.assertIsNone(regia.trova_video(nome))
-        self.assertEqual(self.esito("non_esiste"), "mancante")
+        with mock.patch("nwn_voce.videoteca.aggiorna", return_value=0) as agg:
+            self.assertEqual(self.esito("non_esiste"), "mancante")
+        agg.assert_called_once()
+
+    def test_mancante_scaricato_al_volo(self):
+        # pubblicato dopo il Connetti: un tentativo di scaricarlo prima di dire "mancante"
+        def arriva(_registro):
+            open(os.path.join(regia.cartella_video(), "nuovo.webm"), "wb").close()
+            return 1
+        with mock.patch("nwn_voce.videoteca.aggiorna", side_effect=arriva), \
+                mock.patch.object(regia.Regia, "_lettore", staticmethod(lambda f: "visto")):
+            self.assertEqual(self.esito("nuovo"), "visto")
 
     def test_interruttore_spento(self):
         settings.update(video_server=False)

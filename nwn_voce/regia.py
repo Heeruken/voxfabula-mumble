@@ -107,6 +107,14 @@ class Regia:
             self.registro.scrivi("video_rifiutato", video=nome)
             return "disattivato"
         file = trova_video(nome)
+        if file is None and NOME_RE.match(nome or ""):
+            # non ancora scaricato (pubblicato dopo il Connetti): un tentativo adesso, come il palco
+            try:
+                from . import videoteca
+                videoteca.aggiorna(self.registro)
+            except Exception:  # noqa: BLE001
+                log.exception("videoteca")
+            file = trova_video(nome)
         if file is None:
             self.registro.scrivi("video_mancante", video=nome)
             return "mancante"

@@ -133,6 +133,8 @@ body.lb-forma-superficie #velo { background: radial-gradient(ellipse 60% 70% at 
 .lb-scr-elegante .lb-testo .lb-cap { font-family: 'Cinzel', serif; font-weight: 600; font-size: 1.35em; letter-spacing: .05em; color: var(--accento); }
 .lb-scr-gotica .lb-testo .lb-cap { font-family: 'Unifraktur', serif; font-size: 1.9em; color: #5a0d0d; }
 .lb-scr-gotica .lb-front-titolo { font-family: 'Unifraktur', serif; color: #4a0b0b; }
+/* un paragrafo che continua alla pagina dopo: anche la sua ultima riga e' giustificata (sulle scritture giustificate) */
+.lb-scr-stampa .lb-testo p.taglia, .lb-scr-elegante .lb-testo p.taglia, .lb-scr-gotica .lb-testo p.taglia { text-align-last: justify; }
 .lb-scr-mano .lb-testo, .lb-scr-calligrafia .lb-testo { font-family: 'Fell', serif; font-style: italic; text-align: left; }
 .lb-scr-mano .lb-testo p, .lb-scr-calligrafia .lb-testo p { text-indent: 0; }
 .lb-scr-mano .lb-testo .lb-cap { font: italic 1.25em/1.3 'Fell', serif; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
