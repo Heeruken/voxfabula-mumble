@@ -1,20 +1,68 @@
-// Scena "libro": un libro da sfogliare sopra il gioco, che si intravede dietro (niente cutscene).
+// Scena "libro": un testo da leggere sopra il gioco, che si intravede dietro (niente cutscene).
+// Non solo libri: lettere, pergamene, avvisi, e scritte su MONUMENTI (lapidi, statue, piastre di metallo).
 //
 // Il libro arriva come pacchetto (docs/libri/libro.py nel repo del modulo): palco.oggetto() =
-// { tipo, titolo, autore?, sottotitolo?, colore?, stemma?, fede?, copertina?, testo (il .md), immagini {nome: dataURL} }
+// { tipo, titolo, autore?, sottotitolo?, colore?, stemma?, fede?, copertina?, testo (il .md), immagini {nome: dataURL},
+//   + le scelte di stile (tutte facoltative, se mancano vale il PRESET del tipo):
+//   rilegatura, carta, scrittura, inchiostro, capolettera, decori, formato, busta, cera, simbolo }
 // fede = { nome, titolo, oro, cera, inchiostro }: il simbolo sacro della divinita' nelle sue finiture (vince sullo stemma)
-// Quattro tipi, ognuno con la sua rilegatura, carta e scrittura: grimorio, trattato, diario, lettera.
-// Le pagine si fanno qui, misurando il testo nella pagina vera (font e misure dello schermo);
-// "---" nel testo forza una pagina nuova. Il server non decide niente: si legge e basta.
+// Ogni tipo e' un preset completo; ogni scelta si puo' cambiare a parte (Cartografo, "Personalizza").
+// Tre forme: libro (si sfoglia), foglio (lettera, pergamena, avviso: un foglio alla volta, la lettera nella busta
+// col sigillo), superficie (pietra, marmo, metallo: niente copertina, le facce si susseguono).
+// Le pagine si fanno qui, misurando il testo nella pagina vera; "---" nel testo forza una pagina nuova.
 
 const $ = (s, el = document) => el.querySelector(s);
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const TIPI = ['grimorio', 'trattato', 'diario', 'lettera'];
 const COLORI = { nero: '#1d1714', rosso: '#5c1616', verde: '#1f3b27', blu: '#1b2b4d', viola: '#35214c',
   marrone: '#4d2f1a', grigio: '#3b3a38', avorio: '#d9ccae', oro: '#8c6b22', bianco: '#e7e0cf' };
-const COLORE_TIPO = { grimorio: 'nero', trattato: 'verde', diario: 'marrone', lettera: 'rosso' };
+const CERE = { rosso: '#a3221b', nero: '#2a2524', verde: '#2f5a33', blu: '#26406e', oro: '#b08a2e', viola: '#5a2f72', bianco: '#d8d0bf' };
+
+// ---------------------------------------------------------------- i tipi: un preset completo ciascuno
+const PRESET = {
+  grimorio: { forma: 'libro', rilegatura: 'cuoio', carta: 'macchiata', scrittura: 'gotica', inchiostro: 'nero', capolettera: 'gotico', decori: 'borchie,bruciato', formato: 'normale', colore: 'nero' },
+  trattato: { forma: 'libro', rilegatura: 'tela', carta: 'vecchia', scrittura: 'elegante', inchiostro: 'nero', capolettera: 'miniato', decori: 'cornice', formato: 'normale', colore: 'verde' },
+  diario: { forma: 'libro', rilegatura: 'consunta', carta: 'righe', scrittura: 'mano', inchiostro: 'blu', capolettera: 'no', decori: 'cinghia', formato: 'normale', colore: 'marrone' },
+  lettera: { forma: 'foglio', busta: 'si', carta: 'lettera', scrittura: 'calligrafia', inchiostro: 'seppia', capolettera: 'no', decori: '', formato: 'normale', cera: 'rosso', colore: 'rosso' },
+  pergamena: { forma: 'foglio', busta: 'no', carta: 'pergamena', scrittura: 'stampa', inchiostro: 'seppia', capolettera: 'semplice', decori: 'rotolo', formato: 'normale', cera: 'rosso', colore: 'marrone' },
+  avviso: { forma: 'foglio', busta: 'no', carta: 'vecchia', scrittura: 'stampa', inchiostro: 'nero', capolettera: 'no', decori: 'chiodo,macchie', formato: 'piccolo', cera: 'rosso', colore: 'marrone' },
+  incisione: { forma: 'superficie', carta: 'pietra', scrittura: 'lapidaria', inchiostro: 'incisa', capolettera: 'no', decori: 'crepe,muschio', formato: 'normale', colore: 'grigio' },
+  intarsio: { forma: 'superficie', carta: 'marmo', scrittura: 'lapidaria', inchiostro: 'dorata', capolettera: 'no', decori: 'cornice', formato: 'normale', colore: 'avorio' },
+  piastra: { forma: 'superficie', carta: 'bronzo', scrittura: 'lapidaria', inchiostro: 'incisa', capolettera: 'no', decori: 'chiodi,patina', formato: 'largo', colore: 'oro' },
+};
+const TIPI = Object.keys(PRESET);
+const COLORE_TIPO = Object.fromEntries(TIPI.map(t => [t, PRESET[t].colore]));
+// le scelte possibili (il Cartografo le mostra in "Personalizza"): valore -> nome
+const OPZIONI = {
+  rilegatura: { cuoio: 'Cuoio', tela: 'Tela', consunta: 'Cuoio consunto', legno: 'Legno', metallo: 'Metallo' },
+  carta: { vecchia: 'Carta vecchia', bianca: 'Carta bianca', pergamena: 'Pergamena', macchiata: 'Carta macchiata', righe: 'Carta a righe',
+    lettera: 'Carta da lettere', nera: 'Carta nera', pelle: 'Pelle conciata',
+    pietra: 'Pietra', marmo: 'Marmo', ardesia: 'Ardesia', ossidiana: 'Ossidiana', bronzo: 'Bronzo', ferro: 'Ferro', oro: 'Oro', argento: 'Argento', legno: 'Legno' },
+  scrittura: { stampa: 'A stampa antica', elegante: 'Elegante', gotica: 'Gotica', mano: 'A mano', calligrafia: 'Calligrafia', lapidaria: 'Lapidaria (maiuscole romane)', rune: 'Rune (illeggibile)' },
+  inchiostro: { nero: 'Nero', seppia: 'Seppia', blu: 'Blu', rosso: 'Rosso sangue', verde: 'Verde', viola: 'Viola', bianco: 'Bianco', oro: 'Oro', argento: 'Argento',
+    incisa: 'Incisa', rilievo: 'In rilievo', dorata: 'Intarsio d\'oro', argentata: 'Intarsio d\'argento' },
+  capolettera: { no: 'Nessuno', semplice: 'Semplice', miniato: 'Miniato', gotico: 'Gotico rosso' },
+  decori: { borchie: 'Borchie agli angoli', cornice: 'Cornice', cinghia: 'Cinghia', bruciato: 'Bordi bruciati', macchie: 'Macchie', strappi: 'Bordi strappati',
+    rotolo: 'Arrotolata', chiodo: 'Chiodo (avviso)', chiodi: 'Chiodi agli angoli', crepe: 'Crepe', muschio: 'Muschio', patina: 'Patina verde', ruggine: 'Ruggine' },
+  formato: { piccolo: 'Piccolo', normale: 'Normale', grande: 'Grande', largo: 'Largo (piastra)', alto: 'Alto (stele)' },
+  busta: { si: 'Nella busta col sigillo', no: 'Senza busta' },
+};
+const SUPERFICI = ['pietra', 'marmo', 'ardesia', 'ossidiana', 'bronzo', 'ferro', 'oro', 'argento', 'legno'];
+const CARTE_SCURE = ['nera', 'ardesia', 'ossidiana', 'ferro'];
+
+// il libro con le sue scelte: quelle scritte vincono, le altre vengono dal preset del tipo
+function stile(lk) {
+  const p = PRESET[lk.tipo] || PRESET.trattato;
+  const s = {};
+  for (const k of ['forma', 'rilegatura', 'carta', 'scrittura', 'inchiostro', 'capolettera', 'decori', 'formato', 'busta', 'cera']) {
+    const v = String(lk[k] ?? '').trim().toLowerCase();
+    s[k] = v && (k === 'forma' || k === 'decori' || k === 'cera' || !OPZIONI[k] || OPZIONI[k][v]) ? v : (p[k] ?? '');
+  }
+  if (!['libro', 'foglio', 'superficie'].includes(s.forma)) s.forma = p.forma;
+  s.decori = s.decori === 'nessuno' ? [] : s.decori.split(/[,\s]+/).filter(d => OPZIONI.decori[d]);
+  return s;
+}
 
 // ---------------------------------------------------------------- stemmi disegnati (viewBox 100x100)
 function raggi(n, r1, r2, cx = 50, cy = 50, rot = 0) {
@@ -37,32 +85,42 @@ const STEMMI = {
   spada: '<path d="M47 4h6l3 62h-12z"/><path d="M28 64h44v7H28z"/><path d="M46 71h8v16h-8z"/><circle cx="50" cy="91" r="6"/>',
   fiamma: '<path d="M50 4C56 24 76 34 76 60a26 26 0 0 1-52 0c0-14 8-20 12-28c2 10 6 14 10 16C44 34 44 18 50 4Z"/>',
 };
-function stemma(nome, immagini, cls = '') {
+// un'immagine colorata a tinta unita (simbolo ricolorato): l'immagine fa da maschera
+const tinta = (src, col, cls) => `<span class="lb-stemma tinta ${cls}" style="--tinta:${col};-webkit-mask-image:url('${src}');mask-image:url('${src}')"></span>`;
+function stemma(nome, lk, cls = '') {
   if (!nome) return '';
-  if (immagini && immagini[nome]) return `<img class="lb-stemma ${cls}" src="${immagini[nome]}" alt="">`;
+  const im = lk.immagini || {};
+  if (im[nome]) return lk.simbolo ? tinta(im[nome], lk.simbolo, cls) : `<img class="lb-stemma ${cls}" src="${im[nome]}" alt="">`;
   const p = STEMMI[nome];
-  return p ? `<svg class="lb-stemma ${cls}" viewBox="0 0 100 100" aria-hidden="true">${p}</svg>` : '';
+  return p ? `<svg class="lb-stemma ${cls}" viewBox="0 0 100 100" aria-hidden="true"${lk.simbolo ? ` style="fill:${lk.simbolo}"` : ''}>${p}</svg>` : '';
 }
-
 // il simbolo del libro in una finitura: quello della divinita' se c'e', se no lo stemma
 function stemmaDi(lk, fin, cls = '', riserva = lk.stemma) {
-  if (lk.fede && lk.fede[fin]) return `<img class="lb-stemma fede ${fin} ${cls}" src="${lk.fede[fin]}" alt="">`;
-  return stemma(riserva, lk.immagini, cls);
+  if (lk.fede && lk.fede[fin]) return lk.simbolo ? tinta(lk.fede[fin], lk.simbolo, `fede ${fin} ${cls}`) : `<img class="lb-stemma fede ${fin} ${cls}" src="${lk.fede[fin]}" alt="">`;
+  return stemma(riserva, lk, cls);
 }
 
+// ---------------------------------------------------------------- rune: il testo traslitterato nel futhark
+const RUNE = { th: 'ᚦ', ng: 'ᛜ', a: 'ᚨ', b: 'ᛒ', c: 'ᚲ', d: 'ᛞ', e: 'ᛖ', f: 'ᚠ', g: 'ᚷ', h: 'ᚺ', i: 'ᛁ', j: 'ᛃ', k: 'ᚲ', l: 'ᛚ', m: 'ᛗ', n: 'ᚾ', o: 'ᛟ',
+  p: 'ᛈ', q: 'ᚲ', r: 'ᚱ', s: 'ᛊ', t: 'ᛏ', u: 'ᚢ', v: 'ᚹ', w: 'ᚹ', x: 'ᚲᛊ', y: 'ᛃ', z: 'ᛉ' };
+const runa = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/th|ng|[a-z]/g, m => RUNE[m] || m);
+
 // ---------------------------------------------------------------- testo -> blocchi
-function inline(s, img) {
-  let t = esc(s);
+function inline(s, img, rune) {
+  // i simboli :nome: restano simboli anche in runico
+  const pezzi = String(s).split(/(:[a-z0-9_-]+:)/);
+  let t = pezzi.map(p => (/^:[a-z0-9_-]+:$/.test(p) ? p : esc(rune ? runa(p) : p))).join('');
   t = t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>');
   t = t.replace(/:([a-z0-9_-]+):/g, (m, n) => (img[n] ? `<img class=lb-simb src=${img[n]} alt>` : m));
   return t;
 }
-function blocchi(testo, img) {
+function blocchi(testo, img, rune) {
   const out = [];
   const righe = String(testo || '').replace(/\r\n/g, '\n').split('\n');
   let par = [], cit = [];
-  const chiudiPar = () => { if (par.length) out.push({ t: 'p', html: par.map(r => inline(r, img)).join('<br>') }); par = []; };
-  const chiudiCit = () => { if (cit.length) out.push({ t: 'cit', html: cit.map(r => inline(r, img)).join('<br>') }); cit = []; };
+  const il = r => inline(r, img, rune);
+  const chiudiPar = () => { if (par.length) out.push({ t: 'p', html: par.map(il).join('<br>') }); par = []; };
+  const chiudiCit = () => { if (cit.length) out.push({ t: 'cit', html: cit.map(il).join('<br>') }); cit = []; };
   for (const r0 of righe) {
     const r = r0.trimEnd();
     const nuda = r.trim();
@@ -72,9 +130,9 @@ function blocchi(testo, img) {
     if (/^-{3,}$/.test(nuda)) { chiudiPar(); out.push({ t: 'pagina' }); continue; }
     if (/^(\*\s*){3}$/.test(nuda) || nuda === '~') { chiudiPar(); out.push({ t: 'fregio' }); continue; }
     let m = nuda.match(/^(#{1,2})\s+(.*)$/);
-    if (m) { chiudiPar(); out.push({ t: m[1].length === 1 ? 'h1' : 'h2', html: inline(m[2], img) }); continue; }
+    if (m) { chiudiPar(); out.push({ t: m[1].length === 1 ? 'h1' : 'h2', html: il(m[2]) }); continue; }
     m = nuda.match(/^!\[([^\]]*)\]\(([A-Za-z0-9_-]+)\)$/);
-    if (m) { chiudiPar(); if (img[m[2]]) out.push({ t: 'img', src: img[m[2]], dida: inline(m[1], img) }); continue; }
+    if (m) { chiudiPar(); if (img[m[2]]) out.push({ t: 'img', src: img[m[2]], dida: il(m[1]) }); continue; }
     par.push(nuda);
   }
   chiudiPar(); chiudiCit();
@@ -156,13 +214,13 @@ function impagina(misura, lista) {
 }
 
 // ---------------------------------------------------------------- facce del libro
-function copertina(lk, quarta = false) {
+function copertina(lk, st, quarta = false) {
   if (!quarta && lk.copertina && lk.immagini[lk.copertina])
     return `<div class="lb-cop lb-cop-img"><img src="${lk.immagini[lk.copertina]}" alt=""></div>`;
-  const t = lk.tipo;
-  const borchie = t === 'grimorio' ? '<i class="lb-angolo a1"></i><i class="lb-angolo a2"></i><i class="lb-angolo a3"></i><i class="lb-angolo a4"></i>' : '';
-  const cinghia = t === 'diario' ? '<i class="lb-cinghia"></i>' : '';
-  const cornice = t === 'trattato' ? '<i class="lb-cornice"></i>' : '';
+  const d = st.decori;
+  const borchie = d.includes('borchie') ? '<i class="lb-angolo a1"></i><i class="lb-angolo a2"></i><i class="lb-angolo a3"></i><i class="lb-angolo a4"></i>' : '';
+  const cinghia = d.includes('cinghia') ? '<i class="lb-cinghia"></i>' : '';
+  const cornice = d.includes('cornice') ? '<i class="lb-cornice"></i>' : '';
   if (quarta) return `<div class="lb-cop lb-quarta">${borchie}${cornice}${stemmaDi(lk, 'oro', 'piccolo')}</div>`;
   return `<div class="lb-cop">${borchie}${cornice}${cinghia}
     <div class="lb-cop-dentro">
@@ -180,6 +238,17 @@ function frontespizio(lk) {
     ${lk.autore ? `<div class="lb-front-autore">${esc(lk.autore)}</div>` : ''}
   </div>`;
 }
+// le decorazioni sopra una pagina (foglio e superficie)
+function sopra(st) {
+  const d = st.decori;
+  let s = '';
+  if (d.includes('chiodi')) s += '<i class="lb-chiodo c1"></i><i class="lb-chiodo c2"></i><i class="lb-chiodo c3"></i><i class="lb-chiodo c4"></i>';
+  if (d.includes('chiodo')) s += '<i class="lb-chiodo c0"></i>';
+  if (d.includes('rotolo')) s += '<i class="lb-rullo su"></i><i class="lb-rullo giu"></i>';
+  if (st.forma === 'superficie' && d.includes('cornice')) s += '<i class="lb-incorniciata"></i>';
+  if (st.forma === 'superficie' && d.includes('muschio')) s += '<i class="lb-muschio"></i>';
+  return s;
+}
 
 // ---------------------------------------------------------------- la scena
 export default async function (palco) {
@@ -188,25 +257,39 @@ export default async function (palco) {
   if (!lk || !lk.libro) throw new Error('il libro non e\' arrivato');
   lk.tipo = TIPI.includes(lk.tipo) ? lk.tipo : 'trattato';
   lk.immagini = lk.immagini || {};
-  const tipo = lk.tipo, lettera = tipo === 'lettera';
-  const col = COLORI[lk.colore] || (/^#[0-9a-f]{6}$/i.test(lk.colore || '') ? lk.colore : COLORI[COLORE_TIPO[tipo]]);
+  if (lk.simbolo && !/^#[0-9a-f]{6}$/i.test(lk.simbolo)) lk.simbolo = '';
+  const st = stile(lk);
+  const tipo = lk.tipo, forma = st.forma, foglio = forma === 'foglio', sup = forma === 'superficie';
+  const busta = foglio && st.busta !== 'no';
+  const col = COLORI[lk.colore] || (/^#[0-9a-f]{6}$/i.test(lk.colore || '') ? lk.colore : COLORI[PRESET[tipo].colore]);
+  const cera = CERE[st.cera] || (/^#[0-9a-f]{6}$/i.test(st.cera || '') ? st.cera : CERE.rosso);
+  const rune = st.scrittura === 'rune';
 
-  document.body.classList.add('libro', 'libro-' + tipo);
+  const classi = ['libro', 'libro-' + tipo, 'lb-forma-' + forma, 'lb-ril-' + st.rilegatura, 'lb-carta-' + st.carta, 'lb-scr-' + st.scrittura,
+    'lb-ink-' + st.inchiostro, 'lb-capo-' + st.capolettera, 'lb-fmt-' + st.formato, ...st.decori.map(d => 'lb-dec-' + d)];
+  if (CARTE_SCURE.includes(st.carta)) classi.push('lb-scura');
+  if (busta) classi.push('lb-busta-si');
+  if (SUPERFICI.includes(st.carta)) classi.push('lb-materiale');
+  document.body.classList.add(...classi);
   const scena = $('#scena');
   const tavolo = h('div', 'lb-tavolo');
   const libro = h('div', 'lb-libro');
   libro.style.setProperty('--cop', col);
+  libro.style.setProperty('--cera', cera);
+  if (lk.simbolo) libro.style.setProperty('--simbolo', lk.simbolo);
   const barra = h('div', 'lb-barra');
   tavolo.append(libro, barra);
   scena.append(tavolo);
 
-  // misure: il libro aperto (due pagine) entra nello schermo; la lettera e' un foglio solo
+  // misure: il libro aperto (due pagine) entra nello schermo; foglio e superficie sono una faccia sola
+  const prop = sup ? ({ largo: 1.45, alto: 0.62, grande: 0.8, piccolo: 0.8 }[st.formato] || 0.78) : foglio ? 0.74 : 0.68;
+  const scala = { piccolo: 0.8, grande: 1.08 }[st.formato] || 1;
   const misure = () => {
     const vh = window.innerHeight, vw = window.innerWidth;
-    let H = Math.min(vh * 0.84, 980);
-    let W = H * (lettera ? 0.74 : 0.68);
-    const quanti = lettera ? 1.1 : 2.1;
-    if (W * quanti > vw * 0.94) { W = vw * 0.94 / quanti; H = W / (lettera ? 0.74 : 0.68); }
+    let H = Math.min(vh * 0.84, 980) * scala;
+    let W = H * prop;
+    const quanti = forma === 'libro' ? 2.1 : 1.1;
+    if (W * quanti > vw * 0.94) { W = vw * 0.94 / quanti; H = W / prop; }
     return { W: Math.round(W), H: Math.round(H) };
   };
   // la finestra puo' non avere ancora una misura (overlay appena mostrato, scheda in background)
@@ -217,7 +300,8 @@ export default async function (palco) {
   const { W, H } = misure();
   libro.style.setProperty('--W', W + 'px');
   libro.style.setProperty('--H', H + 'px');
-  libro.style.setProperty('--fs', (H / (lettera ? 40 : 42)).toFixed(1) + 'px');
+  // il carattere si misura sul lato piu' corto (una piastra larga non ha lettere enormi)
+  libro.style.setProperty('--fs', ((sup ? Math.min(H, W / 0.78) * 1.12 : H) / (forma === 'libro' ? 42 : 40)).toFixed(1) + 'px');
 
   // immagini e caratteri pronti prima di misurare
   await Promise.all(Object.values(lk.immagini).map(src => new Promise(r => { const i = new Image(); i.onload = i.onerror = r; i.src = src; })));
@@ -225,14 +309,16 @@ export default async function (palco) {
   if (palco.finita) return;
 
   // si misura in una pagina vera (stesse classi, stesse misure), invisibile
-  const misura = h('div', 'lb-faccia fronte carta' + (lettera ? ' lb-foglio-lettera' : ''));
+  const unaFaccia = foglio || sup;
+  const clsFaccia = sup ? 'lb-faccia fronte lb-sup' : foglio ? 'lb-faccia fronte carta lb-foglio-lettera' : 'lb-faccia fronte carta';
+  const misura = h('div', clsFaccia);
   const misuraTesto = h('div', 'lb-testo');
   misura.append(misuraTesto);
-  const sede = lettera ? misura : h('div', 'lb-foglio');
-  if (!lettera) sede.append(misura);
+  const sede = unaFaccia ? misura : h('div', 'lb-foglio');
+  if (!unaFaccia) sede.append(misura);
   sede.style.visibility = 'hidden';
   libro.append(sede);
-  const pagine = impagina(misuraTesto, blocchi(lk.testo, lk.immagini));
+  const pagine = impagina(misuraTesto, blocchi(lk.testo, lk.immagini, rune));
   sede.remove();
 
   const facce = [];          // html di ogni faccia, in ordine
@@ -241,19 +327,20 @@ export default async function (palco) {
     for (const b of bl) d.append(elBlocco(b));
     return d.outerHTML + (n ? `<div class="lb-num">${n}</div>` : '');
   };
-  if (lettera) {
-    pagine.forEach((bl, i) => facce.push({ cls: 'carta', html: pagina(bl, pagine.length > 1 ? i + 1 : 0) }));
+  if (unaFaccia) {
+    pagine.forEach((bl, i) => facce.push({ cls: sup ? 'lb-sup' : 'carta', html: sopra(st) + pagina(bl, !sup && pagine.length > 1 ? i + 1 : 0) }));
+    if (!facce.length) facce.push({ cls: sup ? 'lb-sup' : 'carta', html: sopra(st) });
   } else {
     const contenuto = [{ cls: 'carta', html: frontespizio(lk) }];
     pagine.forEach((bl, i) => contenuto.push({ cls: 'carta', html: pagina(bl, i + 1) }));
     if (contenuto.length % 2) contenuto.push({ cls: 'carta vuota', html: '' });
-    facce.push({ cls: 'copertina', html: copertina(lk) }, { cls: 'risguardo', html: '' }, ...contenuto,
-               { cls: 'risguardo', html: '' }, { cls: 'copertina quarta', html: copertina(lk, true) });
+    facce.push({ cls: 'copertina', html: copertina(lk, st) }, { cls: 'risguardo', html: '' }, ...contenuto,
+               { cls: 'risguardo', html: '' }, { cls: 'copertina quarta', html: copertina(lk, st, true) });
   }
 
-  // ---- un foglio = due facce (fronte a destra, retro a sinistra quando e' girato)
+  // ---- libro: un foglio = due facce (fronte a destra, retro a sinistra quando e' girato)
   const fogli = [];
-  if (!lettera) {
+  if (!unaFaccia) {
     for (let i = 0; i < facce.length; i += 2) {
       const f = h('div', 'lb-foglio');
       const a = facce[i], b = facce[i + 1];
@@ -263,30 +350,32 @@ export default async function (palco) {
       fogli.push(f);
     }
   } else {
-    // lettera: una busta col sigillo; rotto il sigillo, il foglio si apre
-    const busta = h('div', 'lb-busta', `<div class="lb-sigillo">${stemmaDi(lk, 'cera', '', lk.stemma || 'rosa')}</div>
-      <div class="lb-busta-titolo">${esc(lk.titolo)}</div>`);
-    libro.append(busta);
-    facce.forEach((fc, i) => { const f = h('div', 'lb-faccia fronte lb-foglio-lettera ' + fc.cls, fc.html); f.dataset.i = i; libro.append(f); fogli.push(f); });
+    // lettera: una busta col sigillo; rotto il sigillo, il foglio si apre. Senza busta il foglio c'e' subito.
+    if (busta) {
+      libro.append(h('div', 'lb-busta', `<div class="lb-sigillo">${stemmaDi(lk, 'cera', '', lk.stemma || 'rosa')}</div>
+        <div class="lb-busta-titolo">${esc(lk.titolo)}</div>`));
+    }
+    facce.forEach((fc, i) => { const f = h('div', clsFaccia.replace(' carta', '') + ' ' + fc.cls, fc.html); f.dataset.i = i; libro.append(f); fogli.push(f); });
   }
 
-  let aperti = 0;             // fogli girati (libro) / foglio mostrato (lettera, -1 = busta chiusa)
-  if (lettera) aperti = -1;
+  let aperti = busta ? -1 : 0;   // fogli girati (libro) / faccia mostrata (foglio e superficie; -1 = busta chiusa)
   // il sigillo e' di quella lettera nel mondo: se qualcuno l'ha gia' rotto, lo si trova rotto
-  let giaRotto = lettera && !!(palco.dati && palco.dati.sigillo_rotto);
+  let giaRotto = busta && !!(palco.dati && palco.dati.sigillo_rotto);
   if (giaRotto) libro.classList.add('rotto-prima');
   const n = fogli.length;
   const info = h('span', 'lb-info');
   const bPrima = h('button', 'lb-freccia', '‹'), bDopo = h('button', 'lb-freccia', '›'), bChiudi = h('button', 'lb-chiudi', '✕');
   bPrima.title = 'Pagina prima (←)'; bDopo.title = 'Pagina dopo (→)'; bChiudi.title = 'Chiudi (Esc)';
   barra.append(bPrima, info, bDopo, bChiudi);
+  const minimo = busta ? -1 : 0;
 
-  function disponi(animato = true) {
-    if (lettera) {
+  function disponi() {
+    if (unaFaccia) {
       libro.classList.toggle('aperta', aperti >= 0);
       fogli.forEach((f, i) => { f.classList.toggle('su', i === aperti); f.classList.toggle('via', i < aperti); });
-      info.textContent = aperti < 0 ? (giaRotto ? 'Il sigillo è già rotto · apri' : 'Rompi il sigillo') : (n > 1 ? `Foglio ${aperti + 1} di ${n}` : '');
-      bPrima.disabled = aperti < 0; bDopo.disabled = aperti >= n - 1;
+      info.textContent = aperti < 0 ? (giaRotto ? 'Il sigillo è già rotto · apri' : 'Rompi il sigillo')
+        : n > 1 ? `${sup ? 'Faccia' : 'Foglio'} ${aperti + 1} di ${n}` : (sup ? lk.titolo || '' : '');
+      bPrima.disabled = aperti <= minimo; bDopo.disabled = aperti >= n - 1;
       return;
     }
     fogli.forEach((f, i) => {
@@ -308,8 +397,8 @@ export default async function (palco) {
     bPrima.disabled = aperti === 0; bDopo.disabled = aperti === n;
   }
   function gira(dir) {
-    if (lettera) {
-      const v = Math.max(-1, Math.min(n - 1, aperti + dir));
+    if (unaFaccia) {
+      const v = Math.max(minimo, Math.min(n - 1, aperti + dir));
       if (v === aperti) return;
       if (aperti === -1 && v === 0) {
         libro.classList.add('rotto');
@@ -332,14 +421,14 @@ export default async function (palco) {
   bDopo.addEventListener('click', () => gira(1));
   bChiudi.addEventListener('click', () => palco.chiudi('esc'));
   libro.addEventListener('click', e => {
-    if (lettera && aperti < 0) return gira(1);
+    if (busta && aperti < 0) return gira(1);
     const r = libro.getBoundingClientRect();
     gira(e.clientX > r.left + r.width / 2 ? 1 : -1);
   });
   const tasti = e => {
     if (['ArrowRight', 'PageDown', ' ', 'd', 'D'].includes(e.key)) { e.preventDefault(); gira(1); }
     else if (['ArrowLeft', 'PageUp', 'a', 'A'].includes(e.key)) { e.preventDefault(); gira(-1); }
-    else if (e.key === 'Home') { while (aperti > (lettera ? 0 : 0)) gira(-1); }
+    else if (e.key === 'Home') { while (aperti > Math.max(0, minimo)) gira(-1); }
   };
   let rotella = 0;
   const ruota = e => { const t = Date.now(); if (t - rotella < 350) return; rotella = t; gira(e.deltaY > 0 ? 1 : -1); };
@@ -348,7 +437,7 @@ export default async function (palco) {
   palco.allaFine(() => {
     document.removeEventListener('keydown', tasti);
     window.removeEventListener('wheel', ruota);
-    document.body.classList.remove('libro', 'libro-' + tipo);
+    document.body.classList.remove(...classi);
   });
 
   // in prova (anteprima del redattore del Cartografo) si riapre alla pagina di prima, senza animazioni
@@ -358,13 +447,13 @@ export default async function (palco) {
   if (ricorda !== null) {
     const v = +ricorda;
     libro.classList.add('subito');
-    if (lettera) { aperti = Math.max(-1, Math.min(n - 1, v)); if (aperti >= 0) libro.classList.add('rotto'); }
+    if (unaFaccia) { aperti = Math.max(minimo, Math.min(n - 1, v)); if (busta && aperti >= 0) libro.classList.add('rotto'); }
     else aperti = Math.max(0, Math.min(n, v));
-    disponi(false);
+    disponi();
     tavolo.classList.add('dentro', 'subito');
     requestAnimationFrame(() => requestAnimationFrame(() => { libro.classList.remove('subito'); tavolo.classList.remove('subito'); }));
   } else {
-    disponi(false);
+    disponi();
     requestAnimationFrame(() => tavolo.classList.add('dentro'));
   }
   if (chiave) {
@@ -376,5 +465,5 @@ export default async function (palco) {
   }
 }
 
-// per il redattore dei libri del Cartografo (stessi stemmi e colori nelle scelte)
-export { STEMMI, COLORI, COLORE_TIPO, TIPI };
+// per il redattore dei libri del Cartografo (stessi stemmi, colori, tipi e scelte)
+export { STEMMI, COLORI, CERE, COLORE_TIPO, TIPI, PRESET, OPZIONI, SUPERFICI, stile };
