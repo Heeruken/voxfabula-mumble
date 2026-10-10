@@ -34,6 +34,7 @@ log = logging.getLogger("nwn_voce.cinema")
 
 FINE, ERRORE, MANCANTE, SALTATO = 0, 1, 2, 3
 AVVIO_MAX = 10.0       # secondi per far partire il video
+ATTESA_SENZA_FUOCO = 1.5   # quanto aspettare il primo fotogramma prima di prendere il fuoco a NWN
 MARGINE = 15.0         # secondi oltre la durata prima di chiudere comunque
 TITOLO = APP_NAME + " - Cinema"
 
@@ -61,7 +62,7 @@ _k32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD,
                                             wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
 _k32.CloseHandle.argtypes = [wintypes.HANDLE]
 
-SW_MINIMIZE, SW_RESTORE = 6, 9
+SW_MINIMIZE, SW_RESTORE, SW_SHOWNOACTIVATE = 6, 9, 4
 GW_OWNER = 4
 VK_MENU, KEYEVENTF_KEYUP = 0x12, 0x0002
 
@@ -150,7 +151,7 @@ def _adatta(hwnd, rett) -> None:
     esattamente sull'area di gioco di NWN (se c'e')."""
     stile = _u32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
     _u32.SetWindowLongPtrW(hwnd, GWL_EXSTYLE, (stile | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW)
-    flag = SWP_SHOWWINDOW | SWP_FRAMECHANGED
+    flag = SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE   # il fuoco lo da' solo porta_davanti
     if rett:
         x, y, w, h = rett
         _u32.SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, flag)
@@ -390,6 +391,18 @@ def _riproduci_file(video: str) -> int:
             time.sleep(0.05)
         if mia:
             _adatta(mia, rett)                # al suo posto prima di comparire (niente lampo al centro)
+        if mia and nwn and not esclusivo:
+            # NWN (SDL, schermo intero senza bordi) si riduce a icona appena perde il fuoco. Se il fuoco
+            # passa al lettore prima che il video sia disegnato, per un attimo si vede il desktop. Quindi:
+            # sopra a NWN SENZA prendergli il fuoco (il gioco resta li' sotto), e il fuoco al video
+            # solo quando il primo fotogramma c'e'. Se il video non parte da cosi', come prima.
+            _u32.ShowWindow(mia, SW_SHOWNOACTIVATE)
+            _u32.SetWindowPos(mia, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
+            if api._partito.wait(ATTESA_SENZA_FUOCO):
+                time.sleep(0.2)               # il primo fotogramma sullo schermo
+                log.info("video disegnato sopra al gioco: ora il fuoco")
+            else:
+                log.info("il video non parte senza fuoco: lo mostro come prima")
         api._finestra.show()
         if mia:
             _adatta(mia, rett)
