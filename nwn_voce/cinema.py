@@ -247,6 +247,7 @@ class _Api:
         self._pausa_da = None          # monotonic d'inizio della pausa in corso
         self._in_pausa = 0.0           # secondi di pausa gia' conclusi
         self._nwn_esclusivo = None     # NWN ridotto a icona (schermo intero esclusivo): torna su prima di chiudere
+        self._nwn = None               # la finestra di NWN: torna davanti, SOTTO al lettore, prima che si chiuda
 
     def parte(self) -> None:
         if not self._partito.is_set():
@@ -279,10 +280,17 @@ class _Api:
         if self._chiuso.is_set():
             return
         self._chiuso.set()
-        if self._nwn_esclusivo:
-            # NWN torna su DIETRO al nero del lettore (sempre in primo piano), poi il lettore sparisce
-            _u32.ShowWindow(self._nwn_esclusivo, SW_RESTORE)
-            time.sleep(0.4)
+        nwn = self._nwn or self._nwn_esclusivo
+        if nwn:
+            # NWN torna su e davanti DIETRO al nero del lettore (sempre in primo piano) e ha il tempo di
+            # ridisegnarsi a piena velocita'; solo dopo il lettore sparisce. Senza, in borderless, per un
+            # attimo si vedeva il desktop: NWN in secondo piano (o ridotto a icona) non era ancora li'.
+            iconic = bool(_u32.IsIconic(nwn))
+            if iconic:
+                _u32.ShowWindow(nwn, SW_RESTORE)
+            davanti = porta_davanti(nwn)
+            log.info("chiusura: NWN ridotto a icona=%s, davanti=%s", iconic, davanti)
+            time.sleep(0.5 if iconic or self._nwn_esclusivo else 0.3)
         if self._finestra is not None:
             try:
                 self._finestra.destroy()
@@ -366,6 +374,7 @@ def _riproduci_file(video: str) -> int:
     # in esclusivo NWN si riduce a icona solo DOPO che il nero del lettore copre lo schermo, e torna
     # su PRIMA che il lettore si chiuda: prima, all'inizio e alla fine, si vedeva il desktop
     api._nwn_esclusivo = nwn if esclusivo else None
+    api._nwn = nwn
     api._finestra = webview.create_window(TITOLO, pagina, js_api=api, fullscreen=rett is None,
                                           frameless=True, easy_drag=False, on_top=True, hidden=True,
                                           background_color="#000000", focus=True)
