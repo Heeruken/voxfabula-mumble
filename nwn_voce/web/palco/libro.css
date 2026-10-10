@@ -104,7 +104,9 @@ body.lb-forma-superficie #velo { background: radial-gradient(ellipse 60% 70% at 
 .lb-testo .lb-cit { margin: .5em 1.2em .7em; font-style: italic; opacity: .85; border-left: 2px solid currentColor; border-left-color: color-mix(in srgb, currentColor 35%, transparent); padding-left: .8em; text-align: left; }
 .lb-testo b { font-weight: normal; letter-spacing: .03em; text-shadow: 0 0 .5px currentColor, 0 0 .5px currentColor; }
 .lb-simb { height: 1.15em; vertical-align: -.22em; mix-blend-mode: multiply; }
-.lb-fregio { text-align: center; margin: .5em 0; font: 1.4em/1 'Segoe UI Symbol', serif; opacity: .6; }
+.lb-fregio { text-align: center; margin: .5em 0; font-size: 1.4em; line-height: 1; opacity: .6; }
+.lb-fregio i { display: inline-block; width: .32em; height: .32em; border: 1px solid currentColor; transform: rotate(45deg); vertical-align: middle; }
+body.lb-ink-dorata .lb-testo .lb-fregio { color: #c99b35; } body.lb-ink-argentata .lb-testo .lb-fregio { color: #b9bdc2; }
 .lb-fregio span::before, .lb-fregio span::after { content: ''; display: inline-block; width: 3em; height: 1px; background: currentColor; vertical-align: middle; margin: 0 .6em; opacity: .6; }
 .lb-ill { margin: .6em 0; text-align: center; }
 .lb-ill img { max-width: 100%; max-height: calc(var(--H) * .5); mix-blend-mode: multiply; filter: sepia(.35) contrast(1.05); }
@@ -274,6 +276,7 @@ body:not(.lb-busta-si) .lb-foglio-lettera.su { transition-delay: 0s; }
 .lb-carta-ferro .lb-sup { --m: #4e5155; background-image: var(--sasso), linear-gradient(135deg, rgba(255,255,255,.2), transparent 40%, rgba(0,0,0,.4) 80%); background-blend-mode: overlay, normal; }
 .lb-carta-oro .lb-sup { --m: #b8902f; background-image: var(--grana), linear-gradient(135deg, #f5dd8e, #b8902f 35%, #7a5a16 70%, #e2c56f); background-blend-mode: soft-light, normal; }
 .lb-carta-argento .lb-sup { --m: #a7abb0; background-image: var(--grana), linear-gradient(135deg, #eef0f2, #a7abb0 35%, #5d6166 70%, #d6d9dc); background-blend-mode: soft-light, normal; }
+.lb-carta-pino .lb-sup { --m: #d9b27a; background-image: var(--venatura-legno), radial-gradient(ellipse at 45% 35%, rgba(255,245,220,.3), transparent 65%); background-blend-mode: multiply, normal; }
 .lb-carta-legno .lb-sup { --m: #6b4524; background-image: var(--venatura-legno), radial-gradient(ellipse at 45% 35%, rgba(255,230,190,.15), transparent 65%); background-blend-mode: multiply, normal; }
 /* su carta normale la forma superficie (scelta a mano): la carta come superficie */
 .lb-forma-superficie:not(.lb-materiale) .lb-sup { --m: #e6dcc3; background-image: var(--grana); background-blend-mode: normal; }
@@ -364,6 +367,26 @@ body.lb-ink-dorata .lb-testo p.capo::first-letter, body.lb-ink-argentata .lb-tes
 .lb-dec-frecciasx.lb-forma-superficie .lb-testo { left: 20%; }
 .lb-dec-freccia .lb-chiodo.c2, .lb-dec-freccia .lb-chiodo.c4 { right: 17%; }
 .lb-dec-frecciasx .lb-chiodo.c1, .lb-dec-frecciasx .lb-chiodo.c3 { left: 17%; }
+
+/* crocevia: il palo e le frecce di pino, scritte gotiche nere bruciate nel legno */
+.libro-crocevia .lb-faccia.lb-sup { background: none; box-shadow: none; overflow: visible; }
+.libro-crocevia .lb-sup::before, .libro-crocevia .lb-sup::after { content: none; }
+.lb-croce { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 5%; gap: calc(var(--H) * .022); }
+.lb-palo { position: absolute; left: 50%; top: 1%; bottom: -4%; width: 10%; transform: translateX(-50%); border-radius: 3px 3px 0 0;
+  background-color: #c99a5e; background-image: linear-gradient(90deg, rgba(0,0,0,.35), transparent 22%, rgba(255,240,210,.18) 45%, transparent 70%, rgba(0,0,0,.45)), var(--venatura-legno);
+  background-size: 100% 100%, 300% 40%; background-blend-mode: normal, multiply; box-shadow: 0 0 calc(var(--W) * .03) rgba(0,0,0,.5); }
+.lb-asse { position: relative; z-index: 1; width: 92%; height: calc(var(--H) * min(.15, .78 / var(--quante))); transform: rotate(var(--rot));
+  filter: drop-shadow(0 calc(var(--H) * .008) calc(var(--H) * .008) rgba(0,0,0,.55)); }
+.lb-asse.dx { margin-left: 16%; } .lb-asse.sx { margin-right: 16%; }
+.lb-tavola { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 9%;
+  background-color: #dcb47c; background-image: radial-gradient(ellipse 2.6% 13% at var(--nodo), rgba(120, 60, 20, .7), rgba(170, 100, 45, .3) 50%, transparent 78%),
+    linear-gradient(180deg, rgba(255,245,225,.35), transparent 18%, transparent 82%, rgba(60,30,10,.3)), var(--venatura-legno);
+  background-size: 100% 100%, 100% 100%, 260% 300%; background-blend-mode: normal, normal, multiply; }
+.lb-asse.dx .lb-tavola { clip-path: polygon(0 0, 91% 0, 100% 50%, 91% 100%, 0 100%); padding-right: 12%; }
+.lb-asse.sx .lb-tavola { clip-path: polygon(9% 0, 100% 0, 100% 100%, 9% 100%, 0 50%); padding-left: 12%; }
+.lb-tavola { font-size: calc(var(--H) * min(.075, .42 / var(--quante))); }
+.lb-tavola span { font-family: 'Unifraktur', serif; line-height: 1; color: #17100b; white-space: nowrap; letter-spacing: .01em;
+  text-shadow: 0 0 1px rgba(70, 35, 10, .65), 0 1px 0 rgba(255, 235, 200, .25); }
 
 /* riaperto alla stessa pagina (anteprima del redattore): niente animazioni */
 .lb-libro.subito, .lb-libro.subito *, .lb-tavolo.subito { transition: none !important; }

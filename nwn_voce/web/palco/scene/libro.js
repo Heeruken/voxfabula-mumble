@@ -37,6 +37,8 @@ const PRESET = {
   // cartello e segnale: assi di legno inchiodate, poche parole dipinte in grande (il segnale e' a freccia)
   cartello: { forma: 'superficie', carta: 'legno', scrittura: 'insegna', inchiostro: 'bianco', capolettera: 'no', decori: 'assi,chiodi', formato: 'largo', colore: 'marrone' },
   segnale: { forma: 'superficie', carta: 'legno', scrittura: 'insegna', inchiostro: 'bianco', capolettera: 'no', decori: 'assi,freccia', formato: 'largo', colore: 'marrone' },
+  // crocevia: un palo con piu' frecce di legno chiaro, una per riga ("< Nome" a sinistra, "Nome >" a destra)
+  crocevia: { forma: 'superficie', carta: 'pino', scrittura: 'gotica', inchiostro: 'nero', capolettera: 'no', decori: '', formato: 'alto', colore: 'marrone' },
 };
 const TIPI = Object.keys(PRESET);
 const COLORE_TIPO = Object.fromEntries(TIPI.map(t => [t, PRESET[t].colore]));
@@ -45,7 +47,7 @@ const OPZIONI = {
   rilegatura: { cuoio: 'Cuoio', tela: 'Tela', consunta: 'Cuoio consunto', legno: 'Legno', metallo: 'Metallo' },
   carta: { vecchia: 'Carta vecchia', bianca: 'Carta bianca', pergamena: 'Pergamena', macchiata: 'Carta macchiata', righe: 'Carta a righe',
     lettera: 'Carta da lettere', nera: 'Carta nera', pelle: 'Pelle conciata',
-    pietra: 'Pietra', marmo: 'Marmo', ardesia: 'Ardesia', ossidiana: 'Ossidiana', bronzo: 'Bronzo', ferro: 'Ferro', oro: 'Oro', argento: 'Argento', legno: 'Legno' },
+    pietra: 'Pietra', marmo: 'Marmo', ardesia: 'Ardesia', ossidiana: 'Ossidiana', bronzo: 'Bronzo', ferro: 'Ferro', oro: 'Oro', argento: 'Argento', legno: 'Legno', pino: 'Legno chiaro (pino)' },
   scrittura: { stampa: 'A stampa antica', elegante: 'Elegante', gotica: 'Gotica', mano: 'A mano', calligrafia: 'Calligrafia', lapidaria: 'Lapidaria (maiuscole romane)', insegna: 'Insegna (grande, dipinta)', rune: 'Rune (illeggibile)' },
   inchiostro: { nero: 'Nero', seppia: 'Seppia', blu: 'Blu', rosso: 'Rosso sangue', verde: 'Verde', viola: 'Viola', bianco: 'Bianco', oro: 'Oro', argento: 'Argento',
     incisa: 'Incisa', rilievo: 'In rilievo', dorata: 'Intarsio d\'oro', argentata: 'Intarsio d\'argento' },
@@ -56,7 +58,7 @@ const OPZIONI = {
   formato: { piccolo: 'Piccolo', normale: 'Normale', grande: 'Grande', largo: 'Largo (piastra)', alto: 'Alto (stele)' },
   busta: { si: 'Nella busta col sigillo', no: 'Senza busta' },
 };
-const SUPERFICI = ['pietra', 'marmo', 'ardesia', 'ossidiana', 'bronzo', 'ferro', 'oro', 'argento', 'legno'];
+const SUPERFICI = ['pietra', 'marmo', 'ardesia', 'ossidiana', 'bronzo', 'ferro', 'oro', 'argento', 'legno', 'pino'];
 const CARTE_SCURE = ['nera', 'ardesia', 'ossidiana', 'ferro'];
 
 // il libro con le sue scelte: quelle scritte vincono, le altre vengono dal preset del tipo
@@ -157,7 +159,7 @@ function elBlocco(b) {
     case 'h1': return h('h2', 'lb-cap', b.html);
     case 'h2': return h('h3', 'lb-tit', b.html);
     case 'cit': return h('blockquote', 'lb-cit', b.html);
-    case 'fregio': return h('div', 'lb-fregio', '<span>❦</span>');
+    case 'fregio': return h('div', 'lb-fregio', '<span><i></i></span>');
     case 'img': {
       const f = h('figure', 'lb-ill');
       f.append(Object.assign(h('img'), { src: b.src, alt: '' }));
@@ -245,9 +247,24 @@ function frontespizio(lk) {
     ${stemmaDi(lk, 'inchiostro', 'front')}
     <div class="lb-front-titolo">${esc(lk.titolo)}</div>
     ${lk.sottotitolo ? `<div class="lb-front-sotto">${esc(lk.sottotitolo)}</div>` : ''}
-    <div class="lb-fregio"><span>❦</span></div>
+    <div class="lb-fregio"><span><i></i></span></div>
     ${lk.autore ? `<div class="lb-front-autore">${esc(lk.autore)}</div>` : ''}
   </div>`;
+}
+// il crocevia: il palo e una freccia per ogni riga del testo; la direzione dalla riga (<, >, ←, →),
+// la scritta si stringe se e' lunga; leggere storture e nodi del legno, sempre gli stessi per quel testo
+function crocevia(testo) {
+  const righe = String(testo || '').split('\n').map(r => r.replace(/^#+\s*|^>\s(?=.*>\s*$)/, '').trim())
+    .filter(r => r && !/^(-{3,}|(\*\s*){3}|~)$/.test(r)).slice(0, 7);
+  const assi = righe.map((r, i) => {
+    const sx = /^(<|←)/.test(r);
+    const t = r.replace(/^(<|←|>|→)\s*|\s*(<|←|>|→)$/g, '').replace(/\*+/g, '').trim();
+    const rot = [-1.6, 1.2, -0.7, 1.8, -1.3, 0.8, -1.9][i % 7] * (sx ? -1 : 1);
+    const nodo = `${[68, 31, 74, 22, 58, 40, 80][i % 7]}% ${[62, 38, 70, 45, 30, 66, 52][i % 7]}%`;
+    const fs = Math.min(1, 11 / Math.max(6, [...t].length));
+    return `<div class="lb-asse ${sx ? 'sx' : 'dx'}" style="--rot:${rot}deg;--nodo:${nodo}"><div class="lb-tavola"><span style="font-size:${(fs * 100).toFixed(0)}%">${esc(t)}</span></div></div>`;
+  });
+  return `<div class="lb-croce" style="--quante:${Math.max(3, assi.length)}"><i class="lb-palo"></i>${assi.join('')}</div>`;
 }
 // le decorazioni sopra una pagina (foglio e superficie)
 function sopra(st) {
@@ -342,7 +359,8 @@ export default async function (palco) {
     for (const b of bl) d.append(elBlocco(b));
     return d.outerHTML + (n ? `<div class="lb-num">${n}</div>` : '');
   };
-  if (unaFaccia) {
+  if (tipo === 'crocevia') facce.push({ cls: 'lb-sup', html: crocevia(lk.testo) });
+  else if (unaFaccia) {
     pagine.forEach((bl, i) => facce.push({ cls: sup ? 'lb-sup' : 'carta', html: sopra(st) + pagina(bl, !sup && pagine.length > 1 ? i + 1 : 0) }));
     if (!facce.length) facce.push({ cls: sup ? 'lb-sup' : 'carta', html: sopra(st) });
   } else {
