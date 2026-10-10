@@ -273,8 +273,18 @@ class _TalkWriter:
         self._cinema_do(lambda c: c.execute("DELETE FROM vf_companion WHERE cdkey=?", (cdkey,)))
 
     def companion_reset(self) -> None:
-        """All'avvio del relay nessuno e' collegato: via le righe della volta prima."""
-        self._cinema_do(lambda c: c.execute("DELETE FROM vf_companion"))
+        """All'avvio del relay nessuno e' collegato: via le righe della volta prima. E i video e le scene
+        che il relay di prima aveva gia' mandato (stato 1) non avranno mai un esito: il client che li
+        mostrava era collegato a lui. Si chiudono ("disconnesso"), cosi' lo script libera subito il PG
+        invece di tenerlo al nero (video: fino a 20 minuti; scena oscurata: per sempre)."""
+        def fn(c):
+            c.execute("DELETE FROM vf_companion")
+            c.execute("UPDATE vf_cinema SET stato=2, esito='disconnesso' WHERE stato=1")
+            for sid, cdkey in c.execute("SELECT sid, cdkey FROM vf_scena WHERE stato IN (1, 3)").fetchall():
+                c.execute("UPDATE vf_scena SET stato=2, esito='disconnesso' WHERE sid=? AND cdkey=?", (sid, cdkey))
+                c.execute("INSERT INTO vf_scena_ev (sid, cdkey, ev, dati, t) VALUES (?,?,'chiusa',?,"
+                          "strftime('%s','now'))", (sid, cdkey, json.dumps({"esito": "disconnesso"})))
+        self._cinema_do(fn)
 
     def set_videos(self, nomi) -> bool:
         """Sostituisce l'elenco dei video del catalogo. False = DB occupato."""

@@ -380,6 +380,30 @@ class CinemaTest(RelayCase):
         c.close()
         self.assertTrue(self.wait_for(lambda: self.companion() is None), self.companion())
 
+    def test_riavvio_chiude_cio_che_era_in_corso(self):
+        # video e scene gia' mandati da un relay di prima: nessuno dara' mai un esito
+        self.chiedi("rv1")
+        self.chiedi("rv0")
+        c = sqlite3.connect(self.db)
+        for t in server._SCENA_TABLES:
+            c.execute(t)
+        c.execute("UPDATE vf_cinema SET stato=1 WHERE id='rv1'")
+        c.execute("INSERT INTO vf_scena VALUES('sc1','KTEST','esamina','{}',1,'',strftime('%s','now'))")
+        c.execute("INSERT INTO vf_scena VALUES('sc0','KTEST','esamina','{}',0,'',strftime('%s','now'))")
+        c.commit()
+        c.close()
+        w = server._TalkWriter(self.db)
+        w.companion_reset()
+        w.close()
+        self.assertEqual(self.riga("rv1"), (2, "disconnesso"))
+        self.assertEqual(self.riga("rv0")[0], 0)                 # non ancora mandato: lo prende il prossimo
+        c = sqlite3.connect(self.db)
+        self.assertEqual(c.execute("SELECT stato, esito FROM vf_scena WHERE sid='sc1'").fetchone(), (2, "disconnesso"))
+        self.assertEqual(c.execute("SELECT stato FROM vf_scena WHERE sid='sc0'").fetchone(), (0,))
+        self.assertEqual(c.execute("SELECT ev, dati FROM vf_scena_ev WHERE sid='sc1'").fetchall(),
+                         [("chiusa", '{"esito": "disconnesso"}')])
+        c.close()
+
     def test_companion_vecchio_senza_video(self):
         self.connect("Tester")                     # hello senza "cinema"
         self.assertEqual(self.wait_for(lambda: self.companion()), (0,))
