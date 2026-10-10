@@ -513,3 +513,35 @@ class TestWinProc(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestVideotecaPeriodica(unittest.TestCase):
+    """I cataloghi si rileggono per tutta la sessione (libro ripubblicato a sessione aperta)."""
+
+    def _gira(self, cambia_sessione=False):
+        from unittest import mock
+        from nwn_voce import engine, videoteca
+        stop = threading.Event()
+        finto = type("E", (), {})()
+        finto.regia = type("R", (), {"registro": None})()
+        finto.palco = None
+        finto._stop_evt = None if cambia_sessione else stop
+        finto.RILEGGI_CATALOGHI = 0.05
+        giri = []
+        with mock.patch.object(videoteca, "aggiorna", side_effect=lambda *a, **k: giri.append(1)):
+            t = threading.Thread(target=engine.Engine._videoteca, args=(finto, stop), daemon=True)
+            t.start()
+            time.sleep(0.3)
+            stop.set()
+            t.join(2)
+        return giri, t.is_alive()
+
+    def test_rilegge_e_si_ferma(self):
+        giri, vivo = self._gira()
+        self.assertGreaterEqual(len(giri), 3)
+        self.assertFalse(vivo)
+
+    def test_sessione_cambiata_esce(self):
+        giri, vivo = self._gira(cambia_sessione=True)
+        self.assertEqual(len(giri), 1)
+        self.assertFalse(vivo)

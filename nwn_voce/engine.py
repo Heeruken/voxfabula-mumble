@@ -96,18 +96,18 @@ class Engine:
             self.emit("mumble_launched", host=host)
 
             client = RelayClient(host=host, port=RELAY_PORT, player=name)
+            stop = threading.Event()
             if self.regia is not None:
                 regia = self.regia
                 client.on_video = lambda nome, rid: regia.richiesta(
                     nome, rid, client.send_video_esito)
-                threading.Thread(target=self._videoteca, name="videoteca", daemon=True).start()
+                threading.Thread(target=self._videoteca, args=(stop,), name="videoteca", daemon=True).start()
             if self.palco is not None:
                 palco = self.palco
                 client.on_scena = lambda tm, sid, tipo, dati: palco.evento(tm, sid, tipo, dati, client)
             client.open()
             if self.palco is not None:
                 self.palco.prepara()          # overlay pronto e nascosto: la prima scena compare subito
-            stop = threading.Event()
             self._client, self._stop_evt = client, stop
             self._bridge_thread = threading.Thread(
                 target=self._bridge_main, args=(client, stop, gen), name="bridge", daemon=True)
@@ -123,16 +123,26 @@ class Engine:
                 self.emit("stopped")
 
     # -------------------------------------------------------------- interni
-    def _videoteca(self) -> None:
-        """Scarica i video del server che mancano (una volta per Connetti)."""
-        try:
-            from . import videoteca
-            videoteca.aggiorna(self.regia.registro)
-            if self.palco is not None:
-                from . import palco
-                videoteca.aggiorna(self.regia.registro, sc=palco.scaffale())
-        except Exception:  # noqa: BLE001 -- i video non devono mai fermare la voce
-            log.exception("videoteca")
+    RILEGGI_CATALOGHI = 300.0
+
+    def _videoteca(self, stop: threading.Event) -> None:
+        """Scarica video e oggetti del palco del server che mancano o sono cambiati: al Connetti
+        e poi ogni 5 minuti finche' la sessione dura. Prima solo al Connetti: un libro o un video
+        ripubblicati a sessione aperta (un refuso corretto durante un evento) restavano vecchi
+        fino al Connetti dopo. Il catalogo e' un file piccolo; si scarica solo cio' che ha
+        un'impronta nuova."""
+        while True:
+            try:
+                from . import videoteca
+                videoteca.aggiorna(self.regia.registro)
+                if self.palco is not None:
+                    from . import palco
+                    videoteca.aggiorna(self.regia.registro, sc=palco.scaffale())
+            except Exception:  # noqa: BLE001 -- i video non devono mai fermare la voce
+                log.exception("videoteca")
+            # fermata, o sessione che non e' piu' questa (avvio fallito a meta': stop mai registrato)
+            if stop.wait(self.RILEGGI_CATALOGHI) or self._stop_evt is not stop:
+                return
 
     @staticmethod
     def _stash_crash_dump() -> None:
