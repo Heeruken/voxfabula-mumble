@@ -442,6 +442,15 @@ def _riproduci_file(video: str) -> int:
     rett = None if esclusivo else area_di_gioco(nwn)
     log.info("NWN %s, davanti=%s, esclusivo=%s, area=%s",
              "aperto" if nwn else "chiuso", era_davanti, esclusivo, rett)
+    # il sipario per PRIMA cosa: anche l'avvio del motore del browser puo' rubare il fuoco a NWN
+    sipario = None
+    if nwn and not esclusivo:
+        sipario = _Sipario(rett)
+        if sipario.apri():
+            log.info("sipario aperto (NWN ridotto a icona=%s)", bool(_u32.IsIconic(nwn)))
+        else:
+            log.info("sipario non riuscito: avvio come prima")
+            sipario = None
 
     import webview
     api = _Api()
@@ -466,12 +475,7 @@ def _riproduci_file(video: str) -> int:
         # NWN (SDL, schermo intero senza bordi) si riduce a icona appena il lettore prende il fuoco, e
         # il lettore non e' ancora disegnato: prima il sipario nero sopra al gioco (senza fuoco), cosi'
         # NWN si riduce DIETRO al nero. Il sipario si toglie quando il video e' sullo schermo.
-        sipario = None
-        if nwn and not esclusivo:
-            sipario = _Sipario(rett)
-            if not sipario.apri():
-                log.info("sipario non riuscito: avvio come prima")
-                sipario = None
+        log.info("prima di mostrare il lettore: NWN ridotto a icona=%s", bool(nwn and _u32.IsIconic(nwn)))
         api._finestra.show()
         if mia:
             _adatta(mia, rett)
@@ -483,6 +487,7 @@ def _riproduci_file(video: str) -> int:
             if partito:
                 time.sleep(0.25)              # il primo fotogramma del video sopra al sipario
             sipario.chiudi()
+            log.info("sipario tolto")
         if not partito:
             log.warning("il video non e' partito entro %s s", AVVIO_MAX)
             api._esito = ERRORE
@@ -517,6 +522,8 @@ def _riproduci_file(video: str) -> int:
                 return
 
     webview.start(guardiano, private_mode=True)
+    if sipario:
+        sipario.chiudi()                      # in ogni caso (gia' chiuso: non fa niente)
 
     if nwn and (era_davanti or esclusivo):
         log.info("NWN di nuovo davanti: %s", porta_davanti(nwn))
