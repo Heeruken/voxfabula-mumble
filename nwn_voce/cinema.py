@@ -34,7 +34,6 @@ log = logging.getLogger("nwn_voce.cinema")
 
 FINE, ERRORE, MANCANTE, SALTATO = 0, 1, 2, 3
 AVVIO_MAX = 10.0       # secondi per far partire il video
-ATTESA_SENZA_FUOCO = 1.5   # quanto aspettare il primo fotogramma prima di prendere il fuoco a NWN
 MARGINE = 15.0         # secondi oltre la durata prima di chiudere comunque
 TITOLO = APP_NAME + " - Cinema"
 
@@ -347,6 +346,79 @@ def riproduci(video: str) -> int:
             pass
 
 
+class _Sipario:
+    """Una finestra nera semplicissima (Win32, la disegna Windows all'istante) sopra al gioco,
+    SENZA prendergli il fuoco. Serve all'avvio del video: NWN (SDL, schermo intero senza bordi) si
+    riduce a icona appena il lettore prende il fuoco, e il lettore non e' ancora disegnato (la sua
+    pagina non parte finche' non e' mostrata e attiva): senza sipario, per un attimo, il desktop."""
+
+    _WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t)
+
+    def __init__(self, rett) -> None:
+        self.rett = rett
+        self.hwnd = None
+        self._pronto = threading.Event()
+        self._proc = None
+
+    def apri(self) -> bool:
+        threading.Thread(target=self._giro, name="sipario", daemon=True).start()
+        return self._pronto.wait(1.0) and bool(self.hwnd)
+
+    def chiudi(self) -> None:
+        if self.hwnd:
+            _u32.PostMessageW(self.hwnd, 0x0010, 0, 0)          # WM_CLOSE
+
+    def _giro(self) -> None:
+        try:
+            _u32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t]
+            _u32.DefWindowProcW.restype = ctypes.c_ssize_t
+            _u32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t]
+
+            def proc(h, msg, wp, lp):
+                if msg == 0x0002:                                   # WM_DESTROY
+                    _u32.PostQuitMessage(0)
+                    return 0
+                if msg == 0x0021:                                   # WM_MOUSEACTIVATE: mai il fuoco
+                    return 3                                        # MA_NOACTIVATE
+                return _u32.DefWindowProcW(h, msg, wp, lp)
+            self._proc = self._WNDPROC(proc)
+
+            class WNDCLASSW(ctypes.Structure):
+                _fields_ = [("style", wintypes.UINT), ("lpfnWndProc", self._WNDPROC), ("cbClsExtra", ctypes.c_int),
+                            ("cbWndExtra", ctypes.c_int), ("hInstance", wintypes.HINSTANCE), ("hIcon", wintypes.HICON),
+                            ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HBRUSH),
+                            ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
+            _k32.GetModuleHandleW.restype = wintypes.HMODULE
+            _u32.RegisterClassW.argtypes = [ctypes.c_void_p]
+            gdi = ctypes.WinDLL("gdi32")
+            gdi.GetStockObject.restype = wintypes.HGDIOBJ
+            wc = WNDCLASSW()
+            wc.lpfnWndProc = self._proc
+            wc.hInstance = _k32.GetModuleHandleW(None)
+            wc.hbrBackground = gdi.GetStockObject(4)                # BLACK_BRUSH
+            wc.lpszClassName = "VoxFabulaSipario"
+            _u32.RegisterClassW(ctypes.byref(wc))                   # gia' registrata: va bene lo stesso
+            x, y, w, h = self.rett if self.rett else (0, 0, _u32.GetSystemMetrics(0), _u32.GetSystemMetrics(1))
+            _u32.CreateWindowExW.restype = wintypes.HWND
+            _u32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                                             ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                             wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+            # TOPMOST | TOOLWINDOW (niente barra/Alt+Tab) | NOACTIVATE; WS_POPUP
+            self.hwnd = _u32.CreateWindowExW(0x8 | 0x80 | 0x08000000, "VoxFabulaSipario", "", 0x80000000,
+                                             x, y, w, h, None, None, wc.hInstance, None)
+            if self.hwnd:
+                _u32.ShowWindow(self.hwnd, SW_SHOWNOACTIVATE)
+                _u32.UpdateWindow(self.hwnd)
+            self._pronto.set()
+            msg = wintypes.MSG()
+            while _u32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                _u32.TranslateMessage(ctypes.byref(msg))
+                _u32.DispatchMessageW(ctypes.byref(msg))
+        except Exception:  # noqa: BLE001 -- senza sipario si va avanti come prima
+            log.exception("sipario")
+            self._pronto.set()
+
+
 def _riproduci_file(video: str) -> int:
 
     # pixel veri ovunque (schermi al 125-150%): le misure di NWN e le nostre coincidono
@@ -391,25 +463,27 @@ def _riproduci_file(video: str) -> int:
             time.sleep(0.05)
         if mia:
             _adatta(mia, rett)                # al suo posto prima di comparire (niente lampo al centro)
-        if mia and nwn and not esclusivo:
-            # NWN (SDL, schermo intero senza bordi) si riduce a icona appena perde il fuoco. Se il fuoco
-            # passa al lettore prima che il video sia disegnato, per un attimo si vede il desktop. Quindi:
-            # sopra a NWN SENZA prendergli il fuoco (il gioco resta li' sotto), e il fuoco al video
-            # solo quando il primo fotogramma c'e'. Se il video non parte da cosi', come prima.
-            _u32.ShowWindow(mia, SW_SHOWNOACTIVATE)
-            _u32.SetWindowPos(mia, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
-            if api._partito.wait(ATTESA_SENZA_FUOCO):
-                time.sleep(0.2)               # il primo fotogramma sullo schermo
-                log.info("video disegnato sopra al gioco: ora il fuoco")
-            else:
-                log.info("il video non parte senza fuoco: lo mostro come prima")
+        # NWN (SDL, schermo intero senza bordi) si riduce a icona appena il lettore prende il fuoco, e
+        # il lettore non e' ancora disegnato: prima il sipario nero sopra al gioco (senza fuoco), cosi'
+        # NWN si riduce DIETRO al nero. Il sipario si toglie quando il video e' sullo schermo.
+        sipario = None
+        if nwn and not esclusivo:
+            sipario = _Sipario(rett)
+            if not sipario.apri():
+                log.info("sipario non riuscito: avvio come prima")
+                sipario = None
         api._finestra.show()
         if mia:
             _adatta(mia, rett)
         log.info("in primo piano: %s", porta_davanti(mia))
         if esclusivo:
             _u32.ShowWindow(nwn, SW_MINIMIZE)
-        if not api._partito.wait(AVVIO_MAX):
+        partito = api._partito.wait(AVVIO_MAX)
+        if sipario:
+            if partito:
+                time.sleep(0.25)              # il primo fotogramma del video sopra al sipario
+            sipario.chiudi()
+        if not partito:
             log.warning("il video non e' partito entro %s s", AVVIO_MAX)
             api._esito = ERRORE
             api._chiudi()
