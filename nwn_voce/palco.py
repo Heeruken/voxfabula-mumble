@@ -691,7 +691,8 @@ def _overlay(porta: int, segreto: str) -> int:
                 break
             time.sleep(0.05)
         threading.Thread(target=ascolta, daemon=True).start()
-        while not api._finito.wait(0.5):
+        # durante una scena si guarda spesso (il gioco non deve mai restare davanti da solo), senza ogni 0,5 s
+        while not api._finito.wait(0.1 if api._scena is not None else 0.5):
             mia = stato["mia"]
             if not mia:
                 continue

@@ -181,6 +181,7 @@ GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW, WS_EX_APPWINDOW = 0x00000080, 0x00040000
 HWND_TOPMOST = wintypes.HWND(-1)
 SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE, SWP_FRAMECHANGED, SWP_SHOWWINDOW = 0x1, 0x2, 0x10, 0x20, 0x40
+RIPRESA = 0.1          # ogni quanto si guarda se il gioco e' tornato davanti al video
 PAUSA_MAX = 180.0      # secondi in pausa (giocatore andato altrove) prima di contarlo saltato
 
 
@@ -401,9 +402,19 @@ def _riproduci_file(video: str) -> int:
             api._chiudi()
             return
         inizio = time.monotonic()
-        while not api._chiuso.wait(0.5):
+        giro = 0
+        while not api._chiuso.wait(RIPRESA):
+            giro += 1
+            # tornati sul gioco durante il video (Win, Alt+Tab, clic sulla barra): il video torna SUBITO
+            # sopra e riparte (la pagina riprende da sola quando riprende il fuoco). NWN da solo mai.
+            if mia and nwn and _u32.GetForegroundWindow() == nwn:
+                if esclusivo:
+                    _u32.ShowWindow(nwn, SW_MINIMIZE)
+                _u32.SetWindowPos(mia, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW)
+                porta_davanti(mia)
+                log.info("tornati sul gioco durante il video: di nuovo sopra")
             # resta incollata al gioco: se qualcuno la sposta (o sposta NWN) torna al suo posto
-            if mia and not esclusivo:
+            if mia and not esclusivo and giro % 5 == 0:
                 _incolla(mia, area_di_gioco(nwn) or rett)
             ora = time.monotonic()
             if api._pausa_da is not None and ora - api._pausa_da > PAUSA_MAX:
