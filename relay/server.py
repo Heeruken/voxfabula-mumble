@@ -69,7 +69,7 @@ _EV_RE = re.compile(r"^[a-z0-9_]{1,24}$")
 _VIDEO_TABLE = "CREATE TABLE IF NOT EXISTS vf_video (nome TEXT PRIMARY KEY, t INTEGER);"
 COMPANION_PERIOD = 5.0
 CATALOGO_URL = "https://nwsync.voxfabula.it/prod/2985642d4b434caab09571e1ec2058f8/cinema/catalogo.json"
-CATALOGO_PERIOD = 300.0      # ogni quanto si rilegge il catalogo (video nuovi senza riavviare)
+CATALOGO_PERIOD = 60.0       # ogni quanto si rilegge il catalogo: un video appena pubblicato vale in gioco entro un minuto
 _NOME_VIDEO = re.compile(r"^[a-z0-9_-]{1,40}$")   # come regia.NOME_RE del Companion
 
 
