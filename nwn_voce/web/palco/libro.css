@@ -335,5 +335,35 @@ body.libro-diario.esclusivo #velo { background-image: radial-gradient(ellipse 65
 body.libro-lettera.esclusivo #velo, body.libro-pergamena.esclusivo #velo, body.libro-avviso.esclusivo #velo { background-image: radial-gradient(ellipse 50% 60% at 50% 50%, #3a2610, #0a0602 100%); }
 body.lb-forma-superficie.esclusivo #velo { background-image: radial-gradient(ellipse 60% 70% at 50% 50%, #1e2226, #040507 100%); }
 
+/* ================================================================ STELE, CARTELLO, SEGNALE */
+/* stele: lastra alta col colmo ad arco; il testo scorre dall'alto come in una pagina */
+.libro-stele .lb-faccia.lb-sup { border-radius: 50% 50% 5px 5px / 18% 18% 5px 5px; }
+.libro-stele .lb-incorniciata { inset: 4.5%; border-radius: 50% 50% 3px 3px / 17% 17% 3px 3px; }
+.libro-stele.lb-forma-superficie .lb-testo { inset: 21% 13% 9% 13%; justify-content: flex-start; }
+.libro-stele .lb-testo .lb-cap { text-align: center; }
+/* testo lungo intarsiato: l'oro (o l'argento) riga per riga, se no in fondo a un paragrafo lungo si scurisce */
+.libro-stele.lb-ink-dorata .lb-testo > p, .libro-stele.lb-ink-argentata .lb-testo > p { background-size: 100% 1.5em; background-repeat: repeat-y; }
+/* titoli e capilettera intarsiati anche sulle pietre scure (lb-scura li colorerebbe di inchiostro) */
+body.lb-ink-dorata .lb-testo .lb-cap, body.lb-ink-argentata .lb-testo .lb-cap,
+body.lb-ink-dorata .lb-testo p.capo::first-letter, body.lb-ink-argentata .lb-testo p.capo::first-letter { color: transparent; }
+/* insegna: poche parole dipinte in grande, maiuscoletto, centrate */
+.lb-scr-insegna .lb-testo { font-family: 'Alegreya SC', 'Cinzel', serif; font-weight: 500; font-size: calc(var(--fs) * 1.9); line-height: 1.2;
+  text-align: center; hyphens: none; letter-spacing: .03em; text-shadow: 0 1px 0 rgba(0,0,0,.45), 0 0 1px rgba(0,0,0,.3); }
+.lb-scr-insegna .lb-testo p { text-indent: 0; margin-bottom: .3em; }
+.lb-scr-insegna .lb-testo .lb-cap { font: 500 1.25em/1.15 'Alegreya SC', 'Cinzel', serif; letter-spacing: .05em; }
+.lb-scr-insegna .lb-testo .lb-tit { font: 500 .8em/1.2 'Alegreya SC', serif; font-style: normal; }
+.lb-scr-insegna.lb-forma-superficie .lb-testo { inset: 13% 9%; }
+/* assi: tre tavole orizzontali con le commessure */
+.lb-dec-assi .lb-sup::before { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(180deg, transparent 32.8%, rgba(0,0,0,.55) 33.1%, rgba(255,235,200,.12) 33.6%, transparent 34.2%,
+    transparent 66.1%, rgba(0,0,0,.55) 66.4%, rgba(255,235,200,.12) 66.9%, transparent 67.5%); }
+/* segnale a freccia: la tavola finisce a punta (a destra o a sinistra) */
+.lb-dec-freccia .lb-faccia.lb-sup { clip-path: polygon(0 0, 84% 0, 100% 50%, 84% 100%, 0 100%); }
+.lb-dec-frecciasx .lb-faccia.lb-sup { clip-path: polygon(16% 0, 100% 0, 100% 100%, 16% 100%, 0 50%); }
+.lb-dec-freccia.lb-forma-superficie .lb-testo { right: 20%; }
+.lb-dec-frecciasx.lb-forma-superficie .lb-testo { left: 20%; }
+.lb-dec-freccia .lb-chiodo.c2, .lb-dec-freccia .lb-chiodo.c4 { right: 17%; }
+.lb-dec-frecciasx .lb-chiodo.c1, .lb-dec-frecciasx .lb-chiodo.c3 { left: 17%; }
+
 /* riaperto alla stessa pagina (anteprima del redattore): niente animazioni */
 .lb-libro.subito, .lb-libro.subito *, .lb-tavolo.subito { transition: none !important; }

@@ -8,7 +8,9 @@
 // fede = { nome, titolo, oro, cera, inchiostro }: il simbolo sacro della divinita' nelle sue finiture (vince sullo stemma)
 // Ogni tipo e' un preset completo; ogni scelta si puo' cambiare a parte (Cartografo, "Personalizza").
 // Tre forme: libro (si sfoglia), foglio (lettera, pergamena, avviso: un foglio alla volta, la lettera nella busta
-// col sigillo), superficie (pietra, marmo, metallo: niente copertina, le facce si susseguono).
+// col sigillo), superficie (pietra, marmo, metallo, legno: niente copertina, le facce si susseguono).
+// Tipi nuovi (stele, cartello, segnale) arrivano come "variante" di un tipo vecchio (intarsio, piastra):
+// un Companion che non li conosce mostra il tipo vecchio con le scelte scritte, non un libro.
 // Le pagine si fanno qui, misurando il testo nella pagina vera; "---" nel testo forza una pagina nuova.
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -30,6 +32,11 @@ const PRESET = {
   incisione: { forma: 'superficie', carta: 'pietra', scrittura: 'lapidaria', inchiostro: 'incisa', capolettera: 'no', decori: 'crepe,muschio', formato: 'normale', colore: 'grigio' },
   intarsio: { forma: 'superficie', carta: 'marmo', scrittura: 'lapidaria', inchiostro: 'dorata', capolettera: 'no', decori: 'cornice', formato: 'normale', colore: 'avorio' },
   piastra: { forma: 'superficie', carta: 'bronzo', scrittura: 'lapidaria', inchiostro: 'incisa', capolettera: 'no', decori: 'chiodi,patina', formato: 'largo', colore: 'oro' },
+  // stele: una lastra alta e centinata, il testo lungo come in un libro ma intarsiato d'oro nell'ardesia
+  stele: { forma: 'superficie', carta: 'ardesia', scrittura: 'elegante', inchiostro: 'dorata', capolettera: 'semplice', decori: 'cornice', formato: 'alto', colore: 'grigio' },
+  // cartello e segnale: assi di legno inchiodate, poche parole dipinte in grande (il segnale e' a freccia)
+  cartello: { forma: 'superficie', carta: 'legno', scrittura: 'insegna', inchiostro: 'bianco', capolettera: 'no', decori: 'assi,chiodi', formato: 'largo', colore: 'marrone' },
+  segnale: { forma: 'superficie', carta: 'legno', scrittura: 'insegna', inchiostro: 'bianco', capolettera: 'no', decori: 'assi,freccia', formato: 'largo', colore: 'marrone' },
 };
 const TIPI = Object.keys(PRESET);
 const COLORE_TIPO = Object.fromEntries(TIPI.map(t => [t, PRESET[t].colore]));
@@ -39,12 +46,13 @@ const OPZIONI = {
   carta: { vecchia: 'Carta vecchia', bianca: 'Carta bianca', pergamena: 'Pergamena', macchiata: 'Carta macchiata', righe: 'Carta a righe',
     lettera: 'Carta da lettere', nera: 'Carta nera', pelle: 'Pelle conciata',
     pietra: 'Pietra', marmo: 'Marmo', ardesia: 'Ardesia', ossidiana: 'Ossidiana', bronzo: 'Bronzo', ferro: 'Ferro', oro: 'Oro', argento: 'Argento', legno: 'Legno' },
-  scrittura: { stampa: 'A stampa antica', elegante: 'Elegante', gotica: 'Gotica', mano: 'A mano', calligrafia: 'Calligrafia', lapidaria: 'Lapidaria (maiuscole romane)', rune: 'Rune (illeggibile)' },
+  scrittura: { stampa: 'A stampa antica', elegante: 'Elegante', gotica: 'Gotica', mano: 'A mano', calligrafia: 'Calligrafia', lapidaria: 'Lapidaria (maiuscole romane)', insegna: 'Insegna (grande, dipinta)', rune: 'Rune (illeggibile)' },
   inchiostro: { nero: 'Nero', seppia: 'Seppia', blu: 'Blu', rosso: 'Rosso sangue', verde: 'Verde', viola: 'Viola', bianco: 'Bianco', oro: 'Oro', argento: 'Argento',
     incisa: 'Incisa', rilievo: 'In rilievo', dorata: 'Intarsio d\'oro', argentata: 'Intarsio d\'argento' },
   capolettera: { no: 'Nessuno', semplice: 'Semplice', miniato: 'Miniato', gotico: 'Gotico rosso' },
   decori: { borchie: 'Borchie agli angoli', cornice: 'Cornice', cinghia: 'Cinghia', bruciato: 'Bordi bruciati', macchie: 'Macchie', strappi: 'Bordi strappati',
-    rotolo: 'Arrotolata', chiodo: 'Chiodo (avviso)', chiodi: 'Chiodi agli angoli', crepe: 'Crepe', muschio: 'Muschio', patina: 'Patina verde', ruggine: 'Ruggine' },
+    rotolo: 'Arrotolata', chiodo: 'Chiodo (avviso)', chiodi: 'Chiodi agli angoli', crepe: 'Crepe', muschio: 'Muschio', patina: 'Patina verde', ruggine: 'Ruggine',
+    assi: 'Assi di legno', freccia: 'A freccia verso destra', frecciasx: 'A freccia verso sinistra' },
   formato: { piccolo: 'Piccolo', normale: 'Normale', grande: 'Grande', largo: 'Largo (piastra)', alto: 'Alto (stele)' },
   busta: { si: 'Nella busta col sigillo', no: 'Senza busta' },
 };
@@ -258,7 +266,7 @@ export default async function (palco) {
   const lk = await palco.oggetto();
   if (palco.finita) return;
   if (!lk || !lk.libro) throw new Error('il libro non e\' arrivato');
-  lk.tipo = TIPI.includes(lk.tipo) ? lk.tipo : 'trattato';
+  lk.tipo = TIPI.includes(lk.variante) ? lk.variante : TIPI.includes(lk.tipo) ? lk.tipo : 'trattato';
   // solo immagini incorporate (data:image/...;base64): finiscono dentro l'HTML delle pagine
   const IMG_OK = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
   lk.immagini = Object.fromEntries(Object.entries(lk.immagini || {}).filter(([k, v]) => /^[A-Za-z0-9_-]+$/.test(k) && IMG_OK.test(v)));
